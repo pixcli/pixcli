@@ -516,4 +516,158 @@ certificate = "cert.p12"
         config.save(Some(&path)).unwrap();
         assert!(path.exists());
     }
+
+    #[test]
+    fn test_env_overrides_apply() {
+        // Test the apply_env_overrides method directly to avoid env var race conditions
+        let mut config = PixConfig::default();
+        config.profiles.insert(
+            "default".to_string(),
+            Profile {
+                backend: "efi".to_string(),
+                environment: "sandbox".to_string(),
+                client_id: "original_id".to_string(),
+                client_secret: "original_secret".to_string(),
+                certificate: "/original/cert.p12".to_string(),
+                certificate_password: String::new(),
+                default_pix_key: None,
+            },
+        );
+
+        // Directly test the env override mechanism
+        // We verify the apply_env_overrides logic by calling it with env vars set
+        std::env::set_var("PIXCLI_CLIENT_ID", "env_id_override");
+
+        config.apply_env_overrides();
+
+        std::env::remove_var("PIXCLI_CLIENT_ID");
+
+        let profile = config.profiles.get("default").unwrap();
+        assert_eq!(profile.client_id, "env_id_override");
+        // Other fields unchanged
+        assert_eq!(profile.client_secret, "original_secret");
+    }
+
+    #[test]
+    fn test_env_overrides_empty_profile_removed() {
+        // When no env vars are set and the profile is empty, it should be removed
+        let mut config = PixConfig::default();
+        config.profiles.insert(
+            "default".to_string(),
+            Profile {
+                backend: "efi".to_string(),
+                environment: "sandbox".to_string(),
+                client_id: String::new(),
+                client_secret: String::new(),
+                certificate: String::new(),
+                certificate_password: String::new(),
+                default_pix_key: None,
+            },
+        );
+
+        std::env::remove_var("PIXCLI_CLIENT_ID");
+        std::env::remove_var("PIXCLI_CLIENT_SECRET");
+        std::env::remove_var("PIXCLI_CERTIFICATE");
+        std::env::remove_var("PIXCLI_CERTIFICATE_PASSWORD");
+        std::env::remove_var("PIXCLI_PIX_KEY");
+
+        config.apply_env_overrides();
+        assert!(config.profiles.is_empty());
+    }
+
+    #[test]
+    fn test_get_profile_missing_with_available_profiles() {
+        let mut config = PixConfig::default();
+        config.profiles.insert(
+            "prod".to_string(),
+            Profile {
+                backend: "efi".to_string(),
+                environment: "production".to_string(),
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                certificate: "cert.p12".to_string(),
+                certificate_password: String::new(),
+                default_pix_key: None,
+            },
+        );
+        let result = config.get_profile(Some("nonexistent"));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("prod"));
+    }
+
+    #[test]
+    fn test_get_profile_missing_no_profiles() {
+        let config = PixConfig::default();
+        let result = config.get_profile(Some("nonexistent"));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("config init"));
+    }
+
+    #[test]
+    fn test_expand_path_relative() {
+        let expanded = PixConfig::expand_path("relative/path");
+        assert_eq!(expanded, PathBuf::from("relative/path"));
+    }
+
+    #[test]
+    fn test_defaults_custom_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[defaults]
+profile = "custom"
+output = "json"
+"#,
+        )
+        .unwrap();
+        let config = PixConfig::load(Some(&path)).unwrap();
+        assert_eq!(config.defaults.profile, "custom");
+        assert_eq!(config.defaults.output, "json");
+    }
+
+    #[test]
+    fn test_profile_with_all_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[profiles.full]
+backend = "efi"
+environment = "production"
+client_id = "full_id"
+client_secret = "full_secret"
+certificate = "/full/cert.p12"
+certificate_password = "password123"
+default_pix_key = "+5511999999999"
+"#,
+        )
+        .unwrap();
+        let config = PixConfig::load(Some(&path)).unwrap();
+        let p = config.profiles.get("full").unwrap();
+        assert_eq!(p.backend, "efi");
+        assert_eq!(p.environment, "production");
+        assert_eq!(p.certificate_password, "password123");
+        assert_eq!(p.default_pix_key, Some("+5511999999999".to_string()));
+    }
+
+    #[test]
+    fn test_default_path_with_env_var() {
+        std::env::set_var("PIXCLI_CONFIG", "/custom/config.toml");
+        let path = PixConfig::default_path();
+        std::env::remove_var("PIXCLI_CONFIG");
+        assert_eq!(path, PathBuf::from("/custom/config.toml"));
+    }
+
+    #[test]
+    fn test_default_path_without_env_var() {
+        std::env::remove_var("PIXCLI_CONFIG");
+        let path = PixConfig::default_path();
+        assert!(path.to_string_lossy().ends_with("config.toml"));
+        assert!(path.to_string_lossy().contains(".pixcli"));
+    }
 }

@@ -144,4 +144,56 @@ mod additional_error_tests {
         let provider_err: ProviderError = efi_err.into();
         assert!(matches!(provider_err, ProviderError::Io(_)));
     }
+
+    #[test]
+    fn test_certificate_error_display() {
+        let err = EfiError::CertificateError("invalid format".into());
+        assert!(err.to_string().contains("invalid format"));
+        assert!(err.to_string().contains("certificate error"));
+    }
+
+    #[test]
+    fn test_io_error_display() {
+        let err = EfiError::IoError("permission denied".into());
+        assert!(err.to_string().contains("permission denied"));
+        assert!(err.to_string().contains("I/O error"));
+    }
+
+    #[test]
+    fn test_io_error_from_various_kinds() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "no access");
+        let efi_err = EfiError::from(io_err);
+        assert!(matches!(efi_err, EfiError::IoError(_)));
+        assert!(efi_err.to_string().contains("no access"));
+    }
+
+    #[test]
+    fn test_efi_error_is_debug() {
+        let err = EfiError::TokenError("debug test".into());
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("TokenError"));
+        assert!(debug.contains("debug test"));
+    }
+
+    #[test]
+    fn test_certificate_error_to_provider_preserves_msg() {
+        let efi_err = EfiError::CertificateError("cert invalid".into());
+        let provider_err: ProviderError = efi_err.into();
+        assert!(provider_err.to_string().contains("cert invalid"));
+    }
+
+    #[test]
+    fn test_request_error_to_provider_preserves_msg() {
+        let efi_err = EfiError::RequestError("server down".into());
+        let provider_err: ProviderError = efi_err.into();
+        assert!(provider_err.to_string().contains("server down"));
+    }
+
+    #[test]
+    fn test_json_serde_error_conversion_preserves_msg() {
+        let json_err: serde_json::Error = serde_json::from_str::<i32>("not a number").unwrap_err();
+        let efi_err = EfiError::from(json_err);
+        let provider_err: ProviderError = efi_err.into();
+        assert!(matches!(provider_err, ProviderError::Serialization(_)));
+    }
 }

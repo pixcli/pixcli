@@ -274,3 +274,139 @@ async fn listen(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_config(content: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, content).unwrap();
+        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
+        dir
+    }
+
+    fn cleanup() {
+        std::env::remove_var("PIXCLI_CONFIG");
+    }
+
+    const TEST_CONFIG: &str = r#"
+[defaults]
+profile = "test"
+
+[profiles.test]
+backend = "efi"
+environment = "sandbox"
+client_id = "id"
+client_secret = "secret"
+certificate = "/nonexistent/cert.p12"
+default_pix_key = "+5511999999999"
+"#;
+
+    #[tokio::test]
+    async fn test_webhook_register_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let result = register(None, false, "+5511999999999", "https://example.com/webhook", OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_get_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let result = get(None, false, "+5511999999999", OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_remove_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let result = remove(None, false, "+5511999999999", OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_register_no_profiles() {
+        let _dir = setup_config("");
+        let result = register(None, false, "key", "https://example.com", OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_get_no_profiles() {
+        let _dir = setup_config("");
+        let result = get(None, false, "key", OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_remove_no_profiles() {
+        let _dir = setup_config("");
+        let result = remove(None, false, "key", OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_run_register() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = WebhookCommand::Register {
+            key: "+5511999999999".to_string(),
+            url: "https://example.com/webhook".to_string(),
+        };
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err()); // cert missing
+    }
+
+    #[tokio::test]
+    async fn test_webhook_run_get() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = WebhookCommand::Get {
+            key: "+5511999999999".to_string(),
+        };
+        let result = run(cmd, None, false, OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_run_remove() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = WebhookCommand::Remove {
+            key: "+5511999999999".to_string(),
+        };
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_register_sandbox_flag() {
+        let _dir = setup_config(TEST_CONFIG);
+        let result = register(None, true, "key", "https://example.com", OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_get_with_profile() {
+        let _dir = setup_config(TEST_CONFIG);
+        let result = get(Some("test"), false, "key", OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_webhook_remove_with_profile() {
+        let _dir = setup_config(TEST_CONFIG);
+        let result = remove(Some("test"), false, "key", OutputFormat::Table).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+}

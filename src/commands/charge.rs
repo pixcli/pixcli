@@ -152,3 +152,145 @@ pub async fn run(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_config(content: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, content).unwrap();
+        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
+        dir
+    }
+
+    fn cleanup() {
+        std::env::remove_var("PIXCLI_CONFIG");
+    }
+
+    const TEST_CONFIG: &str = r#"
+[defaults]
+profile = "test"
+
+[profiles.test]
+backend = "efi"
+environment = "sandbox"
+client_id = "id"
+client_secret = "secret"
+certificate = "/nonexistent/cert.p12"
+default_pix_key = "+5511999999999"
+"#;
+
+    #[tokio::test]
+    async fn test_charge_create_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = ChargeCommand::Create {
+            amount: "10.50".to_string(),
+            key: Some("user@example.com".to_string()),
+            description: Some("Test".to_string()),
+            expiry: 3600,
+            debtor_doc: None,
+            debtor_name: None,
+            txid: None,
+        };
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_charge_create_with_debtor_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = ChargeCommand::Create {
+            amount: "50.00".to_string(),
+            key: None, // Should use default from config
+            description: None,
+            expiry: 1800,
+            debtor_doc: Some("52998224725".to_string()),
+            debtor_name: Some("João Silva".to_string()),
+            txid: Some("custom_txid_12345678901234567".to_string()),
+        };
+        let result = run(cmd, None, false, OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_charge_get_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = ChargeCommand::Get {
+            txid: "txid12345".to_string(),
+        };
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_charge_list_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = ChargeCommand::List {
+            days: 7,
+            from: None,
+            to: None,
+        };
+        let result = run(cmd, None, false, OutputFormat::Table).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_charge_list_with_dates_fails_missing_cert() {
+        let _dir = setup_config(TEST_CONFIG);
+        let cmd = ChargeCommand::List {
+            days: 7,
+            from: Some("2026-01-01T00:00:00Z".to_string()),
+            to: Some("2026-01-31T23:59:59Z".to_string()),
+        };
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_charge_no_profiles() {
+        let _dir = setup_config("");
+        let cmd = ChargeCommand::Get {
+            txid: "test".to_string(),
+        };
+        let result = run(cmd, None, false, OutputFormat::Human).await;
+        cleanup();
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_charge_create_no_key_no_default() {
+        let _dir = setup_config(
+            r#"
+[defaults]
+profile = "test"
+
+[profiles.test]
+backend = "efi"
+environment = "sandbox"
+client_id = "id"
+client_secret = "secret"
+certificate = "/nonexistent/cert.p12"
+"#,
+        );
+        let cmd = ChargeCommand::Create {
+            amount: "10.00".to_string(),
+            key: None,
+            description: None,
+            expiry: 3600,
+            debtor_doc: None,
+            debtor_name: None,
+            txid: None,
+        };
+        let result = run(cmd, None, false, OutputFormat::Human).await;
+        cleanup();
+        // Should fail because cert doesn't exist (before the pix key check)
+        assert!(result.is_err());
+    }
+}
