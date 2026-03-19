@@ -62,6 +62,16 @@ enum Commands {
         #[command(subcommand)]
         action: commands::config_cmd::ConfigCommand,
     },
+    /// Generate and decode Pix QR codes.
+    Qr {
+        #[command(subcommand)]
+        action: commands::qr::QrCommand,
+    },
+    /// Manage Pix webhooks.
+    Webhook {
+        #[command(subcommand)]
+        action: commands::webhook::WebhookCommand,
+    },
 }
 
 #[tokio::main]
@@ -92,5 +102,9 @@ async fn main() -> anyhow::Result<()> {
             commands::pix_cmd::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
         }
         Commands::Config { action } => commands::config_cmd::run(action, cli.output),
+        Commands::Qr { action } => commands::qr::run(action, cli.output),
+        Commands::Webhook { action } => {
+            commands::webhook::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
+        }
     }
 }

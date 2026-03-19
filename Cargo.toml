@@ -54,6 +54,15 @@ proptest = "1"
 # Testing
 tempfile = "3"
 
+# QR code
+qrcode = "0.14"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Web server (webhook)
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
 # Internal crates
 pix-core = { path = "crates/pix-core" }
 pix-brcode = { path = "crates/pix-brcode" }
@@ -90,6 +99,10 @@ colored.workspace = true
 dialoguer.workspace = true
 directories.workspace = true
 chrono.workspace = true
+qrcode.workspace = true
+image.workspace = true
+axum.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
