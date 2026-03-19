@@ -98,21 +98,68 @@ async fn setup_token_mock(server: &MockServer) {
         .await;
 }
 
+/// Helper to generate a self-signed PKCS#12 certificate for testing.
+/// Uses openssl command-line tool.
+fn generate_test_cert() -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("key.pem");
+    let cert_path = dir.path().join("cert.pem");
+    let p12_path = dir.path().join("cert.p12");
+
+    let status = std::process::Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=test",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "openssl req failed");
+
+    let status = std::process::Command::new("openssl")
+        .args([
+            "pkcs12",
+            "-export",
+            "-out",
+            p12_path.to_str().unwrap(),
+            "-inkey",
+            key_path.to_str().unwrap(),
+            "-in",
+            cert_path.to_str().unwrap(),
+            "-passout",
+            "pass:",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "openssl pkcs12 failed");
+
+    (dir, p12_path)
+}
+
 // ── Auth Constructor Tests ──────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_auth_new_with_valid_certificate() {
-    // Create a test PKCS#12 cert on the fly
-    let cert_path = "/tmp/test_cert.p12";
-    assert!(
-        std::path::Path::new(cert_path).exists(),
-        "test cert not found"
-    );
+    let (_dir, cert_path) = generate_test_cert();
 
     let config = EfiConfig {
         client_id: "test_id".to_string(),
         client_secret: "test_secret".to_string(),
-        certificate_path: cert_path.into(),
+        certificate_path: cert_path,
         certificate_password: String::new(),
         environment: EfiEnvironment::Sandbox,
     };
@@ -147,7 +194,6 @@ async fn test_auth_new_with_invalid_cert_path() {
 
 #[tokio::test]
 async fn test_auth_new_with_invalid_cert_content() {
-    // Write some garbage to a temp file
     let dir = tempfile::tempdir().unwrap();
     let cert_path = dir.path().join("bad_cert.p12");
     std::fs::write(&cert_path, b"not a real certificate").unwrap();
@@ -168,13 +214,12 @@ async fn test_auth_new_with_invalid_cert_content() {
 
 #[tokio::test]
 async fn test_efi_client_new_with_valid_cert() {
-    let cert_path = "/tmp/test_cert.p12";
-    assert!(std::path::Path::new(cert_path).exists());
+    let (_dir, cert_path) = generate_test_cert();
 
     let config = EfiConfig {
         client_id: "test_id".to_string(),
         client_secret: "test_secret".to_string(),
-        certificate_path: cert_path.into(),
+        certificate_path: cert_path,
         certificate_password: String::new(),
         environment: EfiEnvironment::Sandbox,
     };
@@ -186,13 +231,12 @@ async fn test_efi_client_new_with_valid_cert() {
 
 #[tokio::test]
 async fn test_efi_client_with_pix_key() {
-    let cert_path = "/tmp/test_cert.p12";
-    assert!(std::path::Path::new(cert_path).exists());
+    let (_dir, cert_path) = generate_test_cert();
 
     let config = EfiConfig {
         client_id: "test_id".to_string(),
         client_secret: "test_secret".to_string(),
-        certificate_path: cert_path.into(),
+        certificate_path: cert_path,
         certificate_password: String::new(),
         environment: EfiEnvironment::Sandbox,
     };
