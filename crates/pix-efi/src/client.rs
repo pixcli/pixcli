@@ -14,6 +14,7 @@ use pix_provider::{
 
 use crate::auth::EfiAuth;
 use crate::config::EfiConfig;
+use crate::validate;
 use crate::EfiError;
 
 /// Efí API client for Pix operations.
@@ -115,7 +116,7 @@ impl EfiClient {
     }
 
     /// Checks an HTTP response for errors and converts to `ProviderError`.
-    fn check_response(status: reqwest::StatusCode, body: &str) -> Result<(), ProviderError> {
+    pub fn check_response(status: reqwest::StatusCode, body: &str) -> Result<(), ProviderError> {
         if status.is_success() {
             return Ok(());
         }
@@ -136,6 +137,108 @@ impl EfiClient {
                 message: body.to_string(),
             }),
         }
+    }
+
+    /// Returns `true` if the given error is transient and worth retrying.
+    pub fn is_retryable(err: &ProviderError) -> bool {
+        matches!(
+            err,
+            ProviderError::RateLimited { .. }
+                | ProviderError::Timeout(_)
+                | ProviderError::Http { status: 503, .. }
+                | ProviderError::Http { status: 502, .. }
+        ) || matches!(err, ProviderError::Network(_))
+    }
+
+    /// Executes a GET request with automatic retry on transient failures.
+    ///
+    /// Retries up to 2 times (3 total attempts) with exponential backoff.
+    async fn get_with_retry(
+        &self,
+        path: &str,
+    ) -> Result<(reqwest::StatusCode, String), ProviderError> {
+        let mut last_err = None;
+        for attempt in 0u32..3 {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tracing::debug!("retrying GET {path} after {delay:?} (attempt {attempt})");
+                tokio::time::sleep(delay).await;
+            }
+
+            let response = match self.get(path).await {
+                Ok(r) => r,
+                Err(e) => {
+                    let provider_err: ProviderError = e.into();
+                    if Self::is_retryable(&provider_err) && attempt < 2 {
+                        last_err = Some(provider_err);
+                        continue;
+                    }
+                    return Err(provider_err);
+                }
+            };
+
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<no body>".to_string());
+
+            if let Err(e) = Self::check_response(status, &body) {
+                if Self::is_retryable(&e) && attempt < 2 {
+                    last_err = Some(e);
+                    continue;
+                }
+                return Err(e);
+            }
+
+            return Ok((status, body));
+        }
+        Err(last_err.unwrap_or_else(|| ProviderError::Network("max retries exceeded".to_string())))
+    }
+
+    /// Executes a PUT request with automatic retry on transient failures.
+    async fn put_with_retry<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<(reqwest::StatusCode, String), ProviderError> {
+        let mut last_err = None;
+        for attempt in 0u32..3 {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tracing::debug!("retrying PUT {path} after {delay:?} (attempt {attempt})");
+                tokio::time::sleep(delay).await;
+            }
+
+            let response = match self.put(path, body).await {
+                Ok(r) => r,
+                Err(e) => {
+                    let provider_err: ProviderError = e.into();
+                    if Self::is_retryable(&provider_err) && attempt < 2 {
+                        last_err = Some(provider_err);
+                        continue;
+                    }
+                    return Err(provider_err);
+                }
+            };
+
+            let status = response.status();
+            let resp_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<no body>".to_string());
+
+            if let Err(e) = Self::check_response(status, &resp_body) {
+                if Self::is_retryable(&e) && attempt < 2 {
+                    last_err = Some(e);
+                    continue;
+                }
+                return Err(e);
+            }
+
+            return Ok((status, resp_body));
+        }
+        Err(last_err.unwrap_or_else(|| ProviderError::Network("max retries exceeded".to_string())))
     }
 }
 
@@ -336,6 +439,8 @@ impl EfiChargeResponse {
 impl PixProvider for EfiClient {
     async fn create_charge(&self, request: ChargeRequest) -> Result<ChargeResponse, ProviderError> {
         let txid = request.txid.clone().unwrap_or_else(generate_txid);
+        validate::validate_txid(&txid)?;
+        validate::validate_amount(&request.amount)?;
 
         let debtor = request.debtor.map(|d| {
             let is_cpf = d.document.len() == 11;
@@ -363,14 +468,7 @@ impl PixProvider for EfiClient {
         };
 
         let path = format!("/v2/cob/{txid}");
-        let response = self.put(&path, &body).await?;
-
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let (_status, response_body) = self.put_with_retry(&path, &body).await?;
 
         let efi_resp: EfiChargeResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -394,6 +492,8 @@ impl PixProvider for EfiClient {
         request: DueDateChargeRequest,
     ) -> Result<ChargeResponse, ProviderError> {
         let txid = request.txid.clone().unwrap_or_else(generate_txid);
+        validate::validate_txid(&txid)?;
+        validate::validate_amount(&request.amount)?;
 
         let debtor = request.debtor.map(|d| {
             let is_cpf = d.document.len() == 11;
@@ -422,14 +522,7 @@ impl PixProvider for EfiClient {
         };
 
         let path = format!("/v2/cobv/{txid}");
-        let response = self.put(&path, &body).await?;
-
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let (_status, response_body) = self.put_with_retry(&path, &body).await?;
 
         let efi_resp: EfiChargeResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -449,15 +542,10 @@ impl PixProvider for EfiClient {
     }
 
     async fn get_charge(&self, txid: &str) -> Result<PixCharge, ProviderError> {
-        let path = format!("/v2/cob/{txid}");
-        let response = self.get(&path).await?;
+        validate::validate_txid(txid)?;
 
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let path = format!("/v2/cob/{txid}");
+        let (_status, response_body) = self.get_with_retry(&path).await?;
 
         let efi_resp: EfiChargeResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -481,14 +569,7 @@ impl PixProvider for EfiClient {
             end.to_rfc3339()
         );
 
-        let response = self.get(&path).await?;
-
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let (_status, response_body) = self.get_with_retry(&path).await?;
 
         let efi_resp: EfiChargeListResponse =
             serde_json::from_str(&response_body).map_err(|e| {
@@ -504,6 +585,8 @@ impl PixProvider for EfiClient {
         amount: &str,
         description: Option<&str>,
     ) -> Result<PixTransfer, ProviderError> {
+        validate::validate_amount(amount)?;
+
         let sender_key = self.default_pix_key.as_deref().ok_or_else(|| {
             ProviderError::Authentication(
                 "default_pix_key is required for sending Pix; set it in your profile config"
@@ -525,14 +608,7 @@ impl PixProvider for EfiClient {
         };
 
         let path = format!("/v3/gn/pix/{id_envio}");
-        let response = self.put(&path, &body).await?;
-
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let (_status, response_body) = self.put_with_retry(&path, &body).await?;
 
         let efi_resp: EfiSendPixResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -548,15 +624,10 @@ impl PixProvider for EfiClient {
     }
 
     async fn get_pix(&self, e2eid: &str) -> Result<PixTransaction, ProviderError> {
-        let path = format!("/v2/pix/{e2eid}");
-        let response = self.get(&path).await?;
+        validate::validate_e2eid(e2eid)?;
 
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let path = format!("/v2/pix/{e2eid}");
+        let (_status, response_body) = self.get_with_retry(&path).await?;
 
         let efi_tx: EfiPixTransaction = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -580,14 +651,7 @@ impl PixProvider for EfiClient {
             end.to_rfc3339()
         );
 
-        let response = self.get(&path).await?;
-
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let (_status, response_body) = self.get_with_retry(&path).await?;
 
         let efi_resp: EfiPixListResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -597,14 +661,7 @@ impl PixProvider for EfiClient {
     }
 
     async fn get_balance(&self) -> Result<Balance, ProviderError> {
-        let response = self.get("/v2/gn/saldo").await?;
-
-        let status_code = response.status();
-        let response_body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status_code, &response_body)?;
+        let (_status, response_body) = self.get_with_retry("/v2/gn/saldo").await?;
 
         let efi_resp: EfiBalanceResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
@@ -624,7 +681,13 @@ impl PixProvider for EfiClient {
 fn convert_pix_transaction(efi_tx: &EfiPixTransaction) -> PixTransaction {
     let timestamp = DateTime::parse_from_rfc3339(&efi_tx.horario)
         .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now());
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                "failed to parse timestamp '{}': {e}, using current time",
+                efi_tx.horario
+            );
+            Utc::now()
+        });
 
     PixTransaction {
         e2eid: efi_tx.end_to_end_id.clone(),

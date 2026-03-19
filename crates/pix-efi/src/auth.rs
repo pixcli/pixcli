@@ -71,6 +71,8 @@ impl EfiAuth {
 
         let http_client = Client::builder()
             .identity(identity)
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|e| EfiError::CertificateError(format!("failed to build HTTP client: {e}")))?;
 
