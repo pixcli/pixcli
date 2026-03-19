@@ -36,6 +36,9 @@ uuid = { version = "1", features = ["v4"] }
 # Chrono for timestamps
 chrono = { version = "0.4", features = ["serde"] }
 
+# Property-based testing
+proptest = "1"
+
 # Internal crates
 pix-core = { path = "crates/pix-core" }
 pix-brcode = { path = "crates/pix-brcode" }

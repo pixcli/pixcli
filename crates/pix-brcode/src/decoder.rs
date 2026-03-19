@@ -238,3 +238,36 @@ mod tests {
         assert_eq!(decoded.txid, None);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use crate::encode_brcode;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn encode_decode_roundtrip_pix_key(
+            key in "[a-z]{3,20}@[a-z]{3,10}\\.[a-z]{2,4}",
+            name in "[A-Z ]{1,25}",
+            city in "[A-Z ]{1,15}",
+        ) {
+            let trimmed_name = &name[..name.len().min(25)];
+            let trimmed_city = &city[..city.len().min(15)];
+            if let Ok(brcode) = crate::BrCode::builder(&key, trimmed_name, trimmed_city).build() {
+                let payload = encode_brcode(&brcode);
+                let decoded = decode_brcode(&payload).unwrap();
+                prop_assert_eq!(&decoded.pix_key, &key);
+            }
+        }
+
+        #[test]
+        fn encoded_payload_always_has_valid_crc(
+            key in "[a-z]{5,15}@test\\.com",
+        ) {
+            let brcode = crate::BrCode::builder(&key, "TEST", "CITY").build().unwrap();
+            let payload = encode_brcode(&brcode);
+            prop_assert!(pix_core::crc16::validate_crc(&payload));
+        }
+    }
+}

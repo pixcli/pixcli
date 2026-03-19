@@ -180,11 +180,64 @@ mod tests {
     }
 
     #[test]
+    fn test_crc16_all_ascii_bytes() {
+        // Verify CRC works on all printable ASCII
+        let data: Vec<u8> = (0x20..=0x7E).collect();
+        let crc = crc16_ccitt(&data);
+        assert_ne!(crc, 0);
+        assert_ne!(crc, 0xFFFF);
+    }
+
+    #[test]
     fn test_validate_crc_case_insensitive() {
         let mut payload =
             String::from("000201010211520400005303986540510.005802BR5905TESTE6009SAO PAULO6304");
         let crc = crc16_ccitt_hex(payload.as_bytes());
         payload.push_str(&crc.to_lowercase());
         assert!(validate_crc(&payload));
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn crc16_is_deterministic(data in proptest::collection::vec(any::<u8>(), 0..256)) {
+            let crc1 = crc16_ccitt(&data);
+            let crc2 = crc16_ccitt(&data);
+            prop_assert_eq!(crc1, crc2);
+        }
+
+        #[test]
+        fn crc16_hex_always_4_chars(data in proptest::collection::vec(any::<u8>(), 0..256)) {
+            let hex = crc16_ccitt_hex(&data);
+            prop_assert_eq!(hex.len(), 4);
+            prop_assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+        }
+
+        #[test]
+        fn validate_crc_roundtrip(content in "[a-zA-Z0-9]{10,100}") {
+            let mut payload = format!("{}6304", content);
+            let crc = crc16_ccitt_hex(payload.as_bytes());
+            payload.push_str(&crc);
+            prop_assert!(validate_crc(&payload));
+        }
+
+        #[test]
+        fn corrupted_crc_never_validates(content in "[a-zA-Z0-9]{10,100}") {
+            let mut payload = format!("{}6304", content);
+            let crc = crc16_ccitt_hex(payload.as_bytes());
+            payload.push_str(&crc);
+            // Corrupt one char in the CRC
+            let len = payload.len();
+            let mut corrupted = payload[..len - 1].to_string();
+            let last_char = payload.chars().last().unwrap();
+            let replacement = if last_char == '0' { '1' } else { '0' };
+            corrupted.push(replacement);
+            prop_assert!(!validate_crc(&corrupted));
+        }
     }
 }
