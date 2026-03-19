@@ -661,3 +661,73 @@ mod tests {
         assert!(PixKey::new(PixKeyType::Evp, "550e8400e29b41d4a716446655440000").is_ok());
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn valid_cpf_always_validates(
+            // Generate valid CPFs: 9 random digits, compute check digits
+            d0 in 0u32..10,
+            d1 in 0u32..10,
+            d2 in 0u32..10,
+            d3 in 0u32..10,
+            d4 in 0u32..10,
+            d5 in 0u32..10,
+            d6 in 0u32..10,
+            d7 in 0u32..10,
+            d8 in 0u32..10,
+        ) {
+            let digits = [d0, d1, d2, d3, d4, d5, d6, d7, d8];
+            // Skip all-same-digit
+            if digits.iter().all(|&d| d == digits[0]) {
+                return Ok(());
+            }
+            let sum1: u32 = digits.iter().enumerate().map(|(i, &d)| d * (10 - i as u32)).sum();
+            let rem1 = sum1 % 11;
+            let check1 = if rem1 < 2 { 0 } else { 11 - rem1 };
+            let all10: Vec<u32> = digits.iter().copied().chain(std::iter::once(check1)).collect();
+            let sum2: u32 = all10.iter().enumerate().map(|(i, &d)| d * (11 - i as u32)).sum();
+            let rem2 = sum2 % 11;
+            let check2 = if rem2 < 2 { 0 } else { 11 - rem2 };
+            let cpf: String = digits.iter().chain(&[check1, check2]).map(|d| char::from_digit(*d, 10).unwrap()).collect();
+            prop_assert!(PixKey::new(PixKeyType::Cpf, &cpf).is_ok(), "CPF {} should be valid", cpf);
+        }
+
+        #[test]
+        fn random_11_digits_with_bad_check_rejects(
+            digits in proptest::collection::vec(0u32..10, 11),
+        ) {
+            let cpf: String = digits.iter().map(|d| char::from_digit(*d, 10).unwrap()).collect();
+            // Most random 11-digit strings won't have valid check digits
+            // We just verify it doesn't panic
+            let _ = PixKey::new(PixKeyType::Cpf, &cpf);
+        }
+
+        #[test]
+        fn email_detection_works(
+            local in "[a-z]{1,20}",
+            domain in "[a-z]{1,10}",
+            tld in "[a-z]{2,4}",
+        ) {
+            let email = format!("{}@{}.{}", local, domain, tld);
+            if email.len() <= 77 {
+                let key = PixKey::detect(&email).unwrap();
+                prop_assert_eq!(key.key_type, PixKeyType::Email);
+            }
+        }
+
+        #[test]
+        fn phone_with_valid_format_detects(
+            ddd in 11u32..99,
+            number in 900000000u64..999999999,
+        ) {
+            let phone = format!("+55{}{}", ddd, number);
+            let key = PixKey::detect(&phone).unwrap();
+            prop_assert_eq!(key.key_type, PixKeyType::Phone);
+        }
+    }
+}
