@@ -47,6 +47,7 @@ pub struct EfiAuth {
     config: EfiConfig,
     http_client: Client,
     cached_token: Arc<RwLock<Option<CachedToken>>>,
+    base_url_override: Option<String>,
 }
 
 impl EfiAuth {
@@ -80,16 +81,29 @@ impl EfiAuth {
             config,
             http_client,
             cached_token: Arc::new(RwLock::new(None)),
+            base_url_override: None,
         })
     }
 
     /// Creates an `EfiAuth` with a pre-built HTTP client (useful for testing).
-    #[cfg(test)]
-    pub(crate) fn with_client(config: EfiConfig, http_client: Client) -> Self {
+    #[doc(hidden)]
+    pub fn with_client(config: EfiConfig, http_client: Client) -> Self {
         Self {
             config,
             http_client,
             cached_token: Arc::new(RwLock::new(None)),
+            base_url_override: None,
+        }
+    }
+
+    /// Creates an `EfiAuth` with a pre-built HTTP client and a base URL override (for mock servers).
+    #[doc(hidden)]
+    pub fn with_client_and_url(config: EfiConfig, http_client: Client, base_url: String) -> Self {
+        Self {
+            config,
+            http_client,
+            cached_token: Arc::new(RwLock::new(None)),
+            base_url_override: Some(base_url),
         }
     }
 
@@ -137,6 +151,9 @@ impl EfiAuth {
 
     /// Returns the base URL for the configured environment.
     pub fn base_url(&self) -> &str {
+        if let Some(ref url) = self.base_url_override {
+            return url.as_str();
+        }
         self.config.environment.base_url()
     }
 
@@ -146,7 +163,11 @@ impl EfiAuth {
         let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
         let auth_header = format!("Basic {encoded}");
 
-        let token_url = self.config.environment.token_url();
+        let token_url = self
+            .base_url_override
+            .as_ref()
+            .map(|url| format!("{url}/oauth/token"))
+            .unwrap_or_else(|| self.config.environment.token_url());
 
         let response = self
             .http_client

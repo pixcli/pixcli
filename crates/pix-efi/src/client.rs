@@ -52,11 +52,20 @@ impl EfiClient {
     }
 
     /// Creates a new `EfiClient` with a pre-built `EfiAuth` (useful for testing).
-    #[cfg(test)]
-    pub(crate) fn with_auth(auth: EfiAuth) -> Self {
+    #[doc(hidden)]
+    pub fn with_auth(auth: EfiAuth) -> Self {
         Self {
             auth,
             default_pix_key: None,
+        }
+    }
+
+    /// Creates a new `EfiClient` with a pre-built `EfiAuth` and a default pix key (useful for testing).
+    #[doc(hidden)]
+    pub fn with_auth_and_key(auth: EfiAuth, pix_key: String) -> Self {
+        Self {
+            auth,
+            default_pix_key: Some(pix_key),
         }
     }
 
