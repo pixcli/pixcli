@@ -94,6 +94,9 @@ pub async fn run(
                 _ => None,
             };
 
+            let pix_key_display = pix_key.clone();
+            let amount_display = amount.clone();
+
             let request = ChargeRequest {
                 pix_key,
                 description,
@@ -104,12 +107,12 @@ pub async fn run(
             };
 
             let response = client.create_charge(request).await?;
-            // Convert to PixCharge for display.
+            // Convert to PixCharge for display, carrying forward the original inputs.
             let charge = pix_provider::PixCharge {
                 txid: response.txid,
                 status: response.status,
-                amount: String::new(), // amount is in the response but we don't have it back — use brcode
-                pix_key: String::new(),
+                amount: amount_display,
+                pix_key: pix_key_display,
                 description: None,
                 brcode: Some(response.brcode),
                 debtor: None,
