@@ -28,7 +28,21 @@ pub enum PixKeyType {
 }
 
 /// A validated Pix key with its type and value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// # Examples
+///
+/// ```
+/// use pix_core::pix_key::{PixKey, PixKeyType};
+///
+/// // Create with explicit type
+/// let key = PixKey::new(PixKeyType::Email, "user@example.com").unwrap();
+/// assert_eq!(key.key_type, PixKeyType::Email);
+///
+/// // Auto-detect type
+/// let key = PixKey::detect("+5511987654321").unwrap();
+/// assert_eq!(key.key_type, PixKeyType::Phone);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PixKey {
     /// The type of this Pix key.
     pub key_type: PixKeyType,
