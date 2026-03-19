@@ -9,6 +9,6 @@ pub mod crc16;
 pub mod error;
 pub mod pix_key;
 
-pub use crc16::crc16_ccitt;
+pub use crc16::{crc16_ccitt, crc16_ccitt_hex, validate_crc};
 pub use error::PixError;
 pub use pix_key::{PixKey, PixKeyType};

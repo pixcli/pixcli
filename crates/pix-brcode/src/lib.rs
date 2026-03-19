@@ -24,6 +24,8 @@ pub struct BrCode {
     pub point_of_initiation: Option<String>,
     /// The Pix key (inside merchant account information tag 26, sub-tag 01).
     pub pix_key: String,
+    /// Description text (inside merchant account information tag 26, sub-tag 02).
+    pub description: Option<String>,
     /// Merchant category code (MCC).
     pub merchant_category_code: String,
     /// Transaction currency (ISO 4217 numeric code, "986" for BRL).
@@ -52,6 +54,7 @@ impl BrCode {
             point_of_initiation: None,
             merchant_category_code: "0000".to_string(),
             transaction_amount: None,
+            description: None,
             txid: None,
         }
     }
@@ -66,6 +69,7 @@ pub struct BrCodeBuilder {
     point_of_initiation: Option<String>,
     merchant_category_code: String,
     transaction_amount: Option<String>,
+    description: Option<String>,
     txid: Option<String>,
 }
 
@@ -88,6 +92,12 @@ impl BrCodeBuilder {
     /// Sets the transaction amount.
     pub fn transaction_amount(mut self, amount: &str) -> Self {
         self.transaction_amount = Some(amount.to_string());
+        self
+    }
+
+    /// Sets the description text (included in merchant account info, sub-tag 02).
+    pub fn description(mut self, description: &str) -> Self {
+        self.description = Some(description.to_string());
         self
     }
 
@@ -143,6 +153,7 @@ impl BrCodeBuilder {
             payload_format_indicator: "01".to_string(),
             point_of_initiation: self.point_of_initiation,
             pix_key: self.pix_key,
+            description: self.description,
             merchant_category_code: self.merchant_category_code,
             transaction_currency: "986".to_string(),
             transaction_amount: self.transaction_amount,

@@ -288,16 +288,13 @@ impl PixProvider for EfiClient {
 }
 
 /// Generates a random transaction ID (26 alphanumeric characters).
+///
+/// The Efí API requires txid to be alphanumeric ([a-zA-Z0-9]) and between
+/// 26 and 35 characters. We generate a UUID v4 without hyphens, prefixed
+/// with "pix" for easy identification.
 fn generate_txid() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-
-    // Combine timestamp with a simple counter for uniqueness
-    format!("pix{timestamp:016x}{:010x}", timestamp.wrapping_mul(31))
+    let uuid = uuid::Uuid::new_v4().simple().to_string();
+    format!("pix{uuid}")
 }
 
 #[cfg(test)]

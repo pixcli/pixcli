@@ -50,6 +50,39 @@ pub fn crc16_ccitt_hex(data: &[u8]) -> String {
     format!("{:04X}", crc16_ccitt(data))
 }
 
+/// Validates the CRC16 checksum of a complete EMV/BRCode payload.
+///
+/// The payload must end with the CRC tag `6304` followed by 4 hex characters.
+/// Returns `true` if the embedded CRC matches the computed value.
+///
+/// # Examples
+///
+/// ```
+/// use pix_core::crc16::{crc16_ccitt_hex, validate_crc};
+///
+/// let mut payload = String::from("000201260014BR.GOV.BCB.PIX6304");
+/// let crc = crc16_ccitt_hex(payload.as_bytes());
+/// payload.push_str(&crc);
+/// assert!(validate_crc(&payload));
+/// ```
+pub fn validate_crc(payload: &str) -> bool {
+    if payload.len() < 8 {
+        return false;
+    }
+
+    // Check that "6304" appears at the expected position
+    let crc_tag_start = payload.len() - 8;
+    if &payload[crc_tag_start..crc_tag_start + 4] != "6304" {
+        return false;
+    }
+
+    let actual_crc = &payload[payload.len() - 4..];
+    let data_for_crc = &payload[..payload.len() - 4];
+    let expected_crc = crc16_ccitt_hex(data_for_crc.as_bytes());
+
+    actual_crc.eq_ignore_ascii_case(&expected_crc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +139,52 @@ mod tests {
         let crc1 = crc16_ccitt(b"hello");
         let crc2 = crc16_ccitt(b"world");
         assert_ne!(crc1, crc2);
+    }
+
+    #[test]
+    fn test_validate_crc_valid_payload() {
+        // Build a minimal payload with valid CRC
+        let mut payload = String::from(
+            "00020126330014BR.GOV.BCB.PIX011100000000000520400005303986540510.005802BR5905TESTE6009SAO PAULO6304",
+        );
+        let crc = crc16_ccitt_hex(payload.as_bytes());
+        payload.push_str(&crc);
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_validate_crc_corrupted() {
+        let mut payload = String::from(
+            "00020126330014BR.GOV.BCB.PIX011100000000000520400005303986540510.005802BR5905TESTE6009SAO PAULO6304",
+        );
+        let crc = crc16_ccitt_hex(payload.as_bytes());
+        payload.push_str(&crc);
+
+        // Corrupt the last character
+        let mut corrupted = payload[..payload.len() - 1].to_string();
+        corrupted.push('0');
+        assert!(!validate_crc(&corrupted));
+    }
+
+    #[test]
+    fn test_validate_crc_too_short() {
+        assert!(!validate_crc(""));
+        assert!(!validate_crc("abc"));
+        assert!(!validate_crc("6304AB"));
+    }
+
+    #[test]
+    fn test_validate_crc_missing_tag() {
+        // Valid length but no 6304 tag at expected position
+        assert!(!validate_crc("00020101ABCD1234"));
+    }
+
+    #[test]
+    fn test_validate_crc_case_insensitive() {
+        let mut payload =
+            String::from("000201010211520400005303986540510.005802BR5905TESTE6009SAO PAULO6304");
+        let crc = crc16_ccitt_hex(payload.as_bytes());
+        payload.push_str(&crc.to_lowercase());
+        assert!(validate_crc(&payload));
     }
 }

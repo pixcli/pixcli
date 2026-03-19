@@ -80,6 +80,9 @@ pub fn decode_brcode(payload: &str) -> Result<BrCode, BrCodeError> {
     let pix_key_entry = find_tag(&mai_entries, "01")
         .ok_or_else(|| BrCodeError::MissingTag("26.01 (Pix Key)".into()))?;
 
+    // 26.02 - Description (optional)
+    let description = find_tag(&mai_entries, "02").map(|e| e.value.clone());
+
     // 52 - Merchant Category Code
     let mcc = find_tag(&entries, "52")
         .ok_or_else(|| BrCodeError::MissingTag("52 (Merchant Category Code)".into()))?;
@@ -119,6 +122,7 @@ pub fn decode_brcode(payload: &str) -> Result<BrCode, BrCodeError> {
         payload_format_indicator: pfi.value.clone(),
         point_of_initiation: poi,
         pix_key: pix_key_entry.value.clone(),
+        description,
         merchant_category_code: mcc.value.clone(),
         transaction_currency: currency.value.clone(),
         transaction_amount: amount,

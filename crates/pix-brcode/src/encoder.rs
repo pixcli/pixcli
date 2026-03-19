@@ -27,6 +27,7 @@ mod tags {
 mod merchant_sub {
     pub const GUI: &str = "00";
     pub const PIX_KEY: &str = "01";
+    pub const DESCRIPTION: &str = "02";
 }
 
 /// Sub-tag IDs inside additional data field (tag 62).
@@ -76,7 +77,12 @@ pub fn encode_brcode(brcode: &BrCode) -> String {
     // 26 - Merchant Account Information
     let gui = TlvEntry::new(merchant_sub::GUI, PIX_GUI).encode();
     let key = TlvEntry::new(merchant_sub::PIX_KEY, &brcode.pix_key).encode();
-    let merchant_info = format!("{gui}{key}");
+    let mut merchant_info = format!("{gui}{key}");
+    if let Some(ref desc) = brcode.description {
+        if !desc.is_empty() {
+            merchant_info.push_str(&TlvEntry::new(merchant_sub::DESCRIPTION, desc).encode());
+        }
+    }
     payload.push_str(&TlvEntry::new(tags::MERCHANT_ACCOUNT_INFO, &merchant_info).encode());
 
     // 52 - Merchant Category Code
