@@ -411,4 +411,109 @@ mod tests {
         let mode = metadata.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
     }
+
+    #[test]
+    fn test_corrupt_toml_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "{{{{not valid toml}}}}").unwrap();
+        let result = PixConfig::load(Some(&path));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("failed to parse config"));
+    }
+
+    #[test]
+    fn test_empty_toml_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+        let config = PixConfig::load(Some(&path)).unwrap();
+        assert_eq!(config.defaults.profile, "default");
+        assert!(config.profiles.is_empty());
+    }
+
+    #[test]
+    fn test_missing_fields_use_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[profiles.myprofile]
+backend = "efi"
+environment = "sandbox"
+client_id = "id"
+client_secret = "secret"
+certificate = "cert.p12"
+"#,
+        )
+        .unwrap();
+        let config = PixConfig::load(Some(&path)).unwrap();
+        // defaults section should have default values
+        assert_eq!(config.defaults.profile, "default");
+        assert_eq!(config.defaults.output, "human");
+        // profile should exist with empty certificate_password default
+        let p = config.profiles.get("myprofile").unwrap();
+        assert_eq!(p.certificate_password, "");
+        assert!(p.default_pix_key.is_none());
+    }
+
+    #[test]
+    fn test_get_profile_default_fallback() {
+        let mut config = PixConfig::default();
+        config.defaults.profile = "myp".to_string();
+        config.profiles.insert(
+            "myp".to_string(),
+            Profile {
+                backend: "efi".to_string(),
+                environment: "sandbox".to_string(),
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                certificate: "cert.p12".to_string(),
+                certificate_password: String::new(),
+                default_pix_key: None,
+            },
+        );
+        // None should fall back to default profile
+        let p = config.get_profile(None).unwrap();
+        assert_eq!(p.client_id, "id");
+    }
+
+    #[test]
+    fn test_multiple_profiles_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut config = PixConfig::default();
+        for i in 0..3 {
+            config.profiles.insert(
+                format!("profile_{i}"),
+                Profile {
+                    backend: "efi".to_string(),
+                    environment: if i == 0 { "production" } else { "sandbox" }.to_string(),
+                    client_id: format!("id_{i}"),
+                    client_secret: format!("secret_{i}"),
+                    certificate: format!("cert_{i}.p12"),
+                    certificate_password: String::new(),
+                    default_pix_key: None,
+                },
+            );
+        }
+
+        config.save(Some(&path)).unwrap();
+        let loaded = PixConfig::load(Some(&path)).unwrap();
+        assert_eq!(loaded.profiles.len(), 3);
+        assert_eq!(loaded.profiles["profile_0"].environment, "production");
+        assert_eq!(loaded.profiles["profile_1"].client_id, "id_1");
+    }
+
+    #[test]
+    fn test_save_creates_parent_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("deeply").join("nested").join("config.toml");
+        let config = PixConfig::default();
+        config.save(Some(&path)).unwrap();
+        assert!(path.exists());
+    }
 }
