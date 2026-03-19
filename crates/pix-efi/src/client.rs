@@ -1,11 +1,15 @@
 //! Efí Pix API client implementing the `PixProvider` trait.
+//!
+//! Supports immediate charges, due-date charges, Pix payments,
+//! balance queries, and transaction listing.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use reqwest::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
 
 use pix_provider::{
-    ChargeRequest, ChargeResponse, ChargeStatus, Debtor, PixCharge, PixProvider, ProviderError,
+    Balance, ChargeRequest, ChargeResponse, ChargeStatus, Debtor, DueDateChargeRequest, PixCharge,
+    PixProvider, PixTransaction, PixTransfer, ProviderError, TransactionFilter,
 };
 
 use crate::auth::EfiAuth;
@@ -19,25 +23,40 @@ use crate::EfiError;
 #[derive(Clone)]
 pub struct EfiClient {
     auth: EfiAuth,
+    /// Default Pix key for the account (used as sender key for outgoing payments).
+    default_pix_key: Option<String>,
 }
 
 impl EfiClient {
     /// Creates a new `EfiClient` with the given configuration.
-    ///
-    /// Loads the mTLS certificate and prepares the HTTP client.
     ///
     /// # Errors
     ///
     /// Returns `EfiError::CertificateError` if the certificate cannot be loaded.
     pub fn new(config: EfiConfig) -> Result<Self, EfiError> {
         let auth = EfiAuth::new(config)?;
-        Ok(Self { auth })
+        Ok(Self {
+            auth,
+            default_pix_key: None,
+        })
+    }
+
+    /// Creates a new `EfiClient` with a default Pix key for sending payments.
+    pub fn with_pix_key(config: EfiConfig, pix_key: String) -> Result<Self, EfiError> {
+        let auth = EfiAuth::new(config)?;
+        Ok(Self {
+            auth,
+            default_pix_key: Some(pix_key),
+        })
     }
 
     /// Creates a new `EfiClient` with a pre-built `EfiAuth` (useful for testing).
     #[cfg(test)]
     pub(crate) fn with_auth(auth: EfiAuth) -> Self {
-        Self { auth }
+        Self {
+            auth,
+            default_pix_key: None,
+        }
     }
 
     /// Makes an authenticated GET request to the Efí API.
@@ -50,6 +69,28 @@ impl EfiClient {
             .http_client()
             .get(&url)
             .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await?;
+
+        Ok(response)
+    }
+
+    /// Makes an authenticated POST request to the Efí API.
+    #[allow(dead_code)]
+    async fn post<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<reqwest::Response, EfiError> {
+        let token = self.auth.get_token().await?;
+        let url = format!("{}{path}", self.auth.base_url());
+
+        let response = self
+            .auth
+            .http_client()
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
             .send()
             .await?;
 
@@ -72,9 +113,35 @@ impl EfiClient {
 
         Ok(response)
     }
+
+    /// Checks an HTTP response for errors and converts to `ProviderError`.
+    fn check_response(status: reqwest::StatusCode, body: &str) -> Result<(), ProviderError> {
+        if status.is_success() {
+            return Ok(());
+        }
+        let code = status.as_u16();
+        match code {
+            401 => Err(ProviderError::Authentication(format!(
+                "unauthorized: {body}"
+            ))),
+            403 => Err(ProviderError::Authentication(format!(
+                "forbidden — check API scopes: {body}"
+            ))),
+            404 => Err(ProviderError::NotFound(body.to_string())),
+            429 => Err(ProviderError::RateLimited {
+                retry_after_secs: 60,
+            }),
+            _ => Err(ProviderError::Http {
+                status: code,
+                message: body.to_string(),
+            }),
+        }
+    }
 }
 
-/// Efí API request body for creating a charge.
+// ── Efí API request/response types ──────────────────────────────────────────
+
+/// Efí API request body for creating an immediate charge.
 #[derive(Debug, Serialize)]
 struct EfiChargeRequest {
     calendario: EfiCalendario,
@@ -82,6 +149,19 @@ struct EfiChargeRequest {
     valor: EfiValor,
     chave: String,
     #[serde(rename = "solicitacaoPagador")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    solicitacao_pagador: Option<String>,
+}
+
+/// Efí API request body for creating a due-date charge (cobv).
+#[derive(Debug, Serialize)]
+struct EfiDueDateChargeRequest {
+    calendario: EfiCalendarioCobv,
+    devedor: Option<EfiDevedor>,
+    valor: EfiValor,
+    chave: String,
+    #[serde(rename = "solicitacaoPagador")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     solicitacao_pagador: Option<String>,
 }
 
@@ -90,10 +170,20 @@ struct EfiCalendario {
     expiracao: u32,
 }
 
+#[derive(Debug, Serialize)]
+struct EfiCalendarioCobv {
+    #[serde(rename = "dataDeVencimento")]
+    data_de_vencimento: String,
+    #[serde(rename = "validadeAposVencimento")]
+    validade_apos_vencimento: u32,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct EfiDevedor {
     nome: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cpf: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cnpj: Option<String>,
 }
 
@@ -115,6 +205,7 @@ struct EfiChargeResponse {
     devedor: Option<EfiDevedor>,
     #[serde(rename = "pixCopiaECola")]
     pix_copia_e_cola: Option<String>,
+    pix: Option<Vec<EfiPixPayment>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +220,79 @@ struct EfiChargeListResponse {
     cobs: Vec<EfiChargeResponse>,
 }
 
+/// A Pix payment within a charge response.
+#[derive(Debug, Deserialize)]
+struct EfiPixPayment {
+    #[serde(rename = "endToEndId")]
+    end_to_end_id: String,
+}
+
+/// Efí API response for a single Pix transaction.
+#[derive(Debug, Deserialize)]
+struct EfiPixTransaction {
+    #[serde(rename = "endToEndId")]
+    end_to_end_id: String,
+    txid: Option<String>,
+    valor: String,
+    horario: String,
+    #[serde(rename = "infoPagador")]
+    info_pagador: Option<String>,
+    pagador: Option<EfiPagador>,
+}
+
+/// Efí API response for listing Pix transactions.
+#[derive(Debug, Deserialize)]
+struct EfiPixListResponse {
+    pix: Vec<EfiPixTransaction>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EfiPagador {
+    cpf: Option<String>,
+    cnpj: Option<String>,
+    nome: Option<String>,
+}
+
+/// Efí API response for sending a Pix.
+#[derive(Debug, Deserialize)]
+struct EfiSendPixResponse {
+    #[serde(rename = "idEnvio")]
+    id_envio: String,
+    #[serde(rename = "e2eId")]
+    e2e_id: Option<String>,
+    valor: String,
+    status: String,
+}
+
+/// Efí API response for balance.
+#[derive(Debug, Deserialize)]
+struct EfiBalanceResponse {
+    saldo: String,
+}
+
+/// Efí API request for sending a Pix.
+#[derive(Debug, Serialize)]
+struct EfiSendPixRequest {
+    valor: String,
+    pagador: EfiPagadorRequest,
+    favorecido: EfiDestinatario,
+}
+
+#[derive(Debug, Serialize)]
+struct EfiPagadorRequest {
+    chave: String,
+    #[serde(rename = "infoPagador")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    info_pagador: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct EfiDestinatario {
+    chave: String,
+}
+
+// ── Conversion helpers ──────────────────────────────────────────────────────
+
 impl EfiChargeResponse {
     fn to_status(&self) -> ChargeStatus {
         match self.status.as_str() {
@@ -142,7 +306,12 @@ impl EfiChargeResponse {
 
     fn to_pix_charge(&self) -> PixCharge {
         let expires_at =
-            self.calendario.criacao + chrono::Duration::seconds(self.calendario.expiracao as i64);
+            self.calendario.criacao + Duration::seconds(self.calendario.expiracao as i64);
+        let e2eids: Vec<String> = self
+            .pix
+            .as_ref()
+            .map(|payments| payments.iter().map(|p| p.end_to_end_id.clone()).collect())
+            .unwrap_or_default();
 
         PixCharge {
             txid: self.txid.clone(),
@@ -157,13 +326,16 @@ impl EfiChargeResponse {
             }),
             created_at: self.calendario.criacao,
             expires_at,
+            e2eids,
         }
     }
 }
 
+// ── PixProvider implementation ──────────────────────────────────────────────
+
 impl PixProvider for EfiClient {
     async fn create_charge(&self, request: ChargeRequest) -> Result<ChargeResponse, ProviderError> {
-        let txid = generate_txid();
+        let txid = request.txid.clone().unwrap_or_else(generate_txid);
 
         let debtor = request.debtor.map(|d| {
             let is_cpf = d.document.len() == 11;
@@ -194,25 +366,78 @@ impl PixProvider for EfiClient {
         let response = self.put(&path, &body).await?;
 
         let status_code = response.status();
-        if !status_code.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<no body>".to_string());
-            return Err(ProviderError::Http {
-                status: status_code.as_u16(),
-                message: body,
-            });
-        }
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
 
-        let efi_resp: EfiChargeResponse = response.json().await.map_err(|e| {
+        let efi_resp: EfiChargeResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
         })?;
 
         let status = efi_resp.to_status();
         let created_at = efi_resp.calendario.criacao;
-        let expires_at =
-            created_at + chrono::Duration::seconds(efi_resp.calendario.expiracao as i64);
+        let expires_at = created_at + Duration::seconds(efi_resp.calendario.expiracao as i64);
+
+        Ok(ChargeResponse {
+            txid: efi_resp.txid,
+            brcode: efi_resp.pix_copia_e_cola.unwrap_or_default(),
+            status,
+            created_at,
+            expires_at,
+        })
+    }
+
+    async fn create_due_date_charge(
+        &self,
+        request: DueDateChargeRequest,
+    ) -> Result<ChargeResponse, ProviderError> {
+        let txid = request.txid.clone().unwrap_or_else(generate_txid);
+
+        let debtor = request.debtor.map(|d| {
+            let is_cpf = d.document.len() == 11;
+            EfiDevedor {
+                nome: d.name,
+                cpf: if is_cpf {
+                    Some(d.document.clone())
+                } else {
+                    None
+                },
+                cnpj: if !is_cpf { Some(d.document) } else { None },
+            }
+        });
+
+        let body = EfiDueDateChargeRequest {
+            calendario: EfiCalendarioCobv {
+                data_de_vencimento: request.due_date,
+                validade_apos_vencimento: request.days_after_due.unwrap_or(0),
+            },
+            devedor: debtor,
+            valor: EfiValor {
+                original: request.amount,
+            },
+            chave: request.pix_key,
+            solicitacao_pagador: request.description,
+        };
+
+        let path = format!("/v2/cobv/{txid}");
+        let response = self.put(&path, &body).await?;
+
+        let status_code = response.status();
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
+
+        let efi_resp: EfiChargeResponse = serde_json::from_str(&response_body).map_err(|e| {
+            ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
+        })?;
+
+        let status = efi_resp.to_status();
+        let created_at = efi_resp.calendario.criacao;
+        let expires_at = created_at + Duration::seconds(efi_resp.calendario.expiracao as i64);
 
         Ok(ChargeResponse {
             txid: efi_resp.txid,
@@ -228,22 +453,13 @@ impl PixProvider for EfiClient {
         let response = self.get(&path).await?;
 
         let status_code = response.status();
-        if status_code.as_u16() == 404 {
-            return Err(ProviderError::NotFound(format!("charge {txid} not found")));
-        }
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
 
-        if !status_code.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<no body>".to_string());
-            return Err(ProviderError::Http {
-                status: status_code.as_u16(),
-                message: body,
-            });
-        }
-
-        let efi_resp: EfiChargeResponse = response.json().await.map_err(|e| {
+        let efi_resp: EfiChargeResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
         })?;
 
@@ -252,9 +468,13 @@ impl PixProvider for EfiClient {
 
     async fn list_charges(
         &self,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
+        filter: TransactionFilter,
     ) -> Result<Vec<PixCharge>, ProviderError> {
+        let start = filter
+            .start
+            .unwrap_or_else(|| Utc::now() - Duration::days(7));
+        let end = filter.end.unwrap_or_else(Utc::now);
+
         let path = format!(
             "/v2/cob?inicio={}&fim={}",
             start.to_rfc3339(),
@@ -264,22 +484,135 @@ impl PixProvider for EfiClient {
         let response = self.get(&path).await?;
 
         let status_code = response.status();
-        if !status_code.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<no body>".to_string());
-            return Err(ProviderError::Http {
-                status: status_code.as_u16(),
-                message: body,
-            });
-        }
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
 
-        let efi_resp: EfiChargeListResponse = response.json().await.map_err(|e| {
+        let efi_resp: EfiChargeListResponse =
+            serde_json::from_str(&response_body).map_err(|e| {
+                ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
+            })?;
+
+        Ok(efi_resp.cobs.iter().map(|c| c.to_pix_charge()).collect())
+    }
+
+    async fn send_pix(
+        &self,
+        key: &str,
+        amount: &str,
+        description: Option<&str>,
+    ) -> Result<PixTransfer, ProviderError> {
+        let sender_key = self.default_pix_key.as_deref().ok_or_else(|| {
+            ProviderError::Authentication(
+                "default_pix_key is required for sending Pix; set it in your profile config"
+                    .to_string(),
+            )
+        })?;
+
+        let id_envio = uuid::Uuid::new_v4().simple().to_string();
+
+        let body = EfiSendPixRequest {
+            valor: amount.to_string(),
+            pagador: EfiPagadorRequest {
+                chave: sender_key.to_string(),
+                info_pagador: description.map(String::from),
+            },
+            favorecido: EfiDestinatario {
+                chave: key.to_string(),
+            },
+        };
+
+        let path = format!("/v3/gn/pix/{id_envio}");
+        let response = self.put(&path, &body).await?;
+
+        let status_code = response.status();
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
+
+        let efi_resp: EfiSendPixResponse = serde_json::from_str(&response_body).map_err(|e| {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
         })?;
 
-        Ok(efi_resp.cobs.iter().map(|c| c.to_pix_charge()).collect())
+        Ok(PixTransfer {
+            e2eid: efi_resp.e2e_id.unwrap_or_default(),
+            id_envio: efi_resp.id_envio,
+            amount: efi_resp.valor,
+            status: efi_resp.status,
+            timestamp: Utc::now(),
+        })
+    }
+
+    async fn get_pix(&self, e2eid: &str) -> Result<PixTransaction, ProviderError> {
+        let path = format!("/v2/pix/{e2eid}");
+        let response = self.get(&path).await?;
+
+        let status_code = response.status();
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
+
+        let efi_tx: EfiPixTransaction = serde_json::from_str(&response_body).map_err(|e| {
+            ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
+        })?;
+
+        Ok(convert_pix_transaction(&efi_tx))
+    }
+
+    async fn list_received_pix(
+        &self,
+        filter: TransactionFilter,
+    ) -> Result<Vec<PixTransaction>, ProviderError> {
+        let start = filter
+            .start
+            .unwrap_or_else(|| Utc::now() - Duration::days(7));
+        let end = filter.end.unwrap_or_else(Utc::now);
+
+        let path = format!(
+            "/v2/pix?inicio={}&fim={}",
+            start.to_rfc3339(),
+            end.to_rfc3339()
+        );
+
+        let response = self.get(&path).await?;
+
+        let status_code = response.status();
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
+
+        let efi_resp: EfiPixListResponse = serde_json::from_str(&response_body).map_err(|e| {
+            ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
+        })?;
+
+        Ok(efi_resp.pix.iter().map(convert_pix_transaction).collect())
+    }
+
+    async fn get_balance(&self) -> Result<Balance, ProviderError> {
+        let response = self.get("/v2/gn/saldo").await?;
+
+        let status_code = response.status();
+        let response_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status_code, &response_body)?;
+
+        let efi_resp: EfiBalanceResponse = serde_json::from_str(&response_body).map_err(|e| {
+            ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
+        })?;
+
+        Ok(Balance {
+            available: efi_resp.saldo,
+        })
     }
 
     fn provider_name(&self) -> &str {
@@ -287,7 +620,27 @@ impl PixProvider for EfiClient {
     }
 }
 
-/// Generates a random transaction ID (26 alphanumeric characters).
+/// Converts an Efí Pix transaction to the provider-level type.
+fn convert_pix_transaction(efi_tx: &EfiPixTransaction) -> PixTransaction {
+    let timestamp = DateTime::parse_from_rfc3339(&efi_tx.horario)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+
+    PixTransaction {
+        e2eid: efi_tx.end_to_end_id.clone(),
+        txid: efi_tx.txid.clone(),
+        amount: efi_tx.valor.clone(),
+        payer_name: efi_tx.pagador.as_ref().and_then(|p| p.nome.clone()),
+        payer_document: efi_tx
+            .pagador
+            .as_ref()
+            .and_then(|p| p.cpf.clone().or_else(|| p.cnpj.clone())),
+        description: efi_tx.info_pagador.clone(),
+        timestamp,
+    }
+}
+
+/// Generates a random transaction ID (35 alphanumeric characters).
 ///
 /// The Efí API requires txid to be alphanumeric ([a-zA-Z0-9]) and between
 /// 26 and 35 characters. We generate a UUID v4 without hyphens, prefixed
@@ -306,6 +659,11 @@ mod tests {
         let txid = generate_txid();
         assert!(!txid.is_empty());
         assert!(txid.starts_with("pix"));
+        assert!(
+            txid.len() >= 26 && txid.len() <= 35,
+            "txid length {} is out of range",
+            txid.len()
+        );
     }
 
     #[test]
@@ -324,6 +682,7 @@ mod tests {
             solicitacao_pagador: None,
             devedor: None,
             pix_copia_e_cola: None,
+            pix: None,
         };
         assert_eq!(resp.to_status(), ChargeStatus::Active);
     }
@@ -344,6 +703,7 @@ mod tests {
             solicitacao_pagador: None,
             devedor: None,
             pix_copia_e_cola: None,
+            pix: None,
         };
         assert_eq!(resp.to_status(), ChargeStatus::Completed);
     }
@@ -369,6 +729,9 @@ mod tests {
                 cnpj: None,
             }),
             pix_copia_e_cola: Some("brcode_payload".to_string()),
+            pix: Some(vec![EfiPixPayment {
+                end_to_end_id: "E123456".to_string(),
+            }]),
         };
 
         let charge = resp.to_pix_charge();
@@ -378,6 +741,7 @@ mod tests {
         assert_eq!(charge.description, Some("Test payment".to_string()));
         assert_eq!(charge.brcode, Some("brcode_payload".to_string()));
         assert!(charge.debtor.is_some());
+        assert_eq!(charge.e2eids, vec!["E123456".to_string()]);
     }
 
     #[test]
@@ -392,5 +756,52 @@ mod tests {
         let auth = EfiAuth::with_client(config, reqwest::Client::new());
         let client = EfiClient::with_auth(auth);
         assert_eq!(client.provider_name(), "efi");
+    }
+
+    #[test]
+    fn test_convert_pix_transaction() {
+        let efi_tx = EfiPixTransaction {
+            end_to_end_id: "E999".to_string(),
+            txid: Some("tx1".to_string()),
+            valor: "42.00".to_string(),
+            horario: "2026-03-19T12:00:00Z".to_string(),
+            info_pagador: Some("Pagamento".to_string()),
+            pagador: Some(EfiPagador {
+                cpf: Some("12345678900".to_string()),
+                cnpj: None,
+                nome: Some("Maria".to_string()),
+            }),
+        };
+
+        let tx = convert_pix_transaction(&efi_tx);
+        assert_eq!(tx.e2eid, "E999");
+        assert_eq!(tx.txid, Some("tx1".to_string()));
+        assert_eq!(tx.amount, "42.00");
+        assert_eq!(tx.payer_name, Some("Maria".to_string()));
+        assert_eq!(tx.payer_document, Some("12345678900".to_string()));
+    }
+
+    #[test]
+    fn test_check_response_success() {
+        assert!(EfiClient::check_response(reqwest::StatusCode::OK, "").is_ok());
+        assert!(EfiClient::check_response(reqwest::StatusCode::CREATED, "").is_ok());
+    }
+
+    #[test]
+    fn test_check_response_auth_failure() {
+        let result = EfiClient::check_response(reqwest::StatusCode::UNAUTHORIZED, "bad token");
+        assert!(matches!(result, Err(ProviderError::Authentication(_))));
+    }
+
+    #[test]
+    fn test_check_response_not_found() {
+        let result = EfiClient::check_response(reqwest::StatusCode::NOT_FOUND, "not found");
+        assert!(matches!(result, Err(ProviderError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_check_response_rate_limited() {
+        let result = EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "slow down");
+        assert!(matches!(result, Err(ProviderError::RateLimited { .. })));
     }
 }

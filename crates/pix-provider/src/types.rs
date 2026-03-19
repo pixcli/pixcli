@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Request to create a new Pix charge.
+/// Request to create a new immediate Pix charge (cobrança imediata).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChargeRequest {
     /// The Pix key to receive the payment.
@@ -16,6 +16,27 @@ pub struct ChargeRequest {
     pub expiration_secs: u32,
     /// Optional debtor information.
     pub debtor: Option<Debtor>,
+    /// Optional custom txid (if `None`, provider generates one).
+    pub txid: Option<String>,
+}
+
+/// Request to create a Pix charge with a due date (cobrança com vencimento).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DueDateChargeRequest {
+    /// The Pix key to receive the payment.
+    pub pix_key: String,
+    /// Description or info text.
+    pub description: Option<String>,
+    /// Amount in BRL.
+    pub amount: String,
+    /// Due date (ISO 8601 date, e.g. "2026-04-15").
+    pub due_date: String,
+    /// Number of days after due date the charge can still be paid.
+    pub days_after_due: Option<u32>,
+    /// Optional debtor information.
+    pub debtor: Option<Debtor>,
+    /// Optional custom txid.
+    pub txid: Option<String>,
 }
 
 /// Information about the person paying the charge.
@@ -91,6 +112,62 @@ pub struct PixCharge {
     pub created_at: DateTime<Utc>,
     /// When the charge expires.
     pub expires_at: DateTime<Utc>,
+    /// End-to-end IDs of associated Pix payments.
+    pub e2eids: Vec<String>,
+}
+
+/// A received or sent Pix transaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PixTransaction {
+    /// End-to-end identifier for this Pix transfer.
+    pub e2eid: String,
+    /// Associated charge txid, if any.
+    pub txid: Option<String>,
+    /// Amount in BRL.
+    pub amount: String,
+    /// Payer name, if available.
+    pub payer_name: Option<String>,
+    /// Payer document (CPF/CNPJ), if available.
+    pub payer_document: Option<String>,
+    /// Description / info from the payer.
+    pub description: Option<String>,
+    /// When the transaction occurred.
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Result of sending a Pix payment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PixTransfer {
+    /// End-to-end identifier.
+    pub e2eid: String,
+    /// Sending identifier.
+    pub id_envio: String,
+    /// Amount in BRL.
+    pub amount: String,
+    /// Status of the transfer.
+    pub status: String,
+    /// When the transfer was created.
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Account balance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Balance {
+    /// Available balance in BRL.
+    pub available: String,
+}
+
+/// Filter for listing transactions/charges.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TransactionFilter {
+    /// Start of the period (inclusive).
+    pub start: Option<DateTime<Utc>>,
+    /// End of the period (inclusive).
+    pub end: Option<DateTime<Utc>>,
+    /// Page number (0-based).
+    pub page: Option<u32>,
+    /// Items per page.
+    pub per_page: Option<u32>,
 }
 
 #[cfg(test)]
@@ -126,6 +203,7 @@ mod tests {
             amount: "10.50".to_string(),
             expiration_secs: 3600,
             debtor: None,
+            txid: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("user@example.com"));
@@ -143,9 +221,35 @@ mod tests {
                 name: "João Silva".to_string(),
                 document: "52998224725".to_string(),
             }),
+            txid: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("João Silva"));
         assert!(json.contains("52998224725"));
+    }
+
+    #[test]
+    fn test_pix_transaction_serialize() {
+        let tx = PixTransaction {
+            e2eid: "E12345".to_string(),
+            txid: Some("txid123".to_string()),
+            amount: "50.00".to_string(),
+            payer_name: Some("Maria".to_string()),
+            payer_document: None,
+            description: None,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&tx).unwrap();
+        assert!(json.contains("E12345"));
+        assert!(json.contains("50.00"));
+    }
+
+    #[test]
+    fn test_balance_serialize() {
+        let b = Balance {
+            available: "1234.56".to_string(),
+        };
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(json.contains("1234.56"));
     }
 }
