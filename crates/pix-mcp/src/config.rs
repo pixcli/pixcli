@@ -395,7 +395,10 @@ default_pix_key = "key_b"
         let config = load_config_from(&path).unwrap();
         assert_eq!(config.profiles.len(), 2);
         assert_eq!(config.profiles["a"].client_id, "a_id");
-        assert_eq!(config.profiles["b"].default_pix_key, Some("key_b".to_string()));
+        assert_eq!(
+            config.profiles["b"].default_pix_key,
+            Some("key_b".to_string())
+        );
     }
 
     #[test]
@@ -416,7 +419,10 @@ default_pix_key = "key_b"
 
     #[test]
     fn test_load_missing_config() {
-        std::env::set_var("PIXCLI_CONFIG", "/tmp/absolutely-nonexistent-pixcli-mcp-config.toml");
+        std::env::set_var(
+            "PIXCLI_CONFIG",
+            "/tmp/absolutely-nonexistent-pixcli-mcp-config.toml",
+        );
         let result = PixConfig::load();
         std::env::remove_var("PIXCLI_CONFIG");
         assert!(result.is_err());

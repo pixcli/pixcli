@@ -307,7 +307,14 @@ default_pix_key = "+5511999999999"
     #[tokio::test]
     async fn test_webhook_register_fails_missing_cert() {
         let _dir = setup_config(TEST_CONFIG);
-        let result = register(None, false, "+5511999999999", "https://example.com/webhook", OutputFormat::Json).await;
+        let result = register(
+            None,
+            false,
+            "+5511999999999",
+            "https://example.com/webhook",
+            OutputFormat::Json,
+        )
+        .await;
         cleanup();
         assert!(result.is_err());
     }
@@ -331,7 +338,14 @@ default_pix_key = "+5511999999999"
     #[tokio::test]
     async fn test_webhook_register_no_profiles() {
         let _dir = setup_config("");
-        let result = register(None, false, "key", "https://example.com", OutputFormat::Human).await;
+        let result = register(
+            None,
+            false,
+            "key",
+            "https://example.com",
+            OutputFormat::Human,
+        )
+        .await;
         cleanup();
         assert!(result.is_err());
     }
@@ -389,7 +403,14 @@ default_pix_key = "+5511999999999"
     #[tokio::test]
     async fn test_webhook_register_sandbox_flag() {
         let _dir = setup_config(TEST_CONFIG);
-        let result = register(None, true, "key", "https://example.com", OutputFormat::Human).await;
+        let result = register(
+            None,
+            true,
+            "key",
+            "https://example.com",
+            OutputFormat::Human,
+        )
+        .await;
         cleanup();
         assert!(result.is_err());
     }
