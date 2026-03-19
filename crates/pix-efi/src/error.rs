@@ -94,3 +94,54 @@ mod tests {
         assert!(matches!(provider_err, ProviderError::Certificate(_)));
     }
 }
+
+#[cfg(test)]
+mod additional_error_tests {
+    use super::*;
+
+    #[test]
+    fn test_token_error_display() {
+        let err = EfiError::TokenError("expired".into());
+        assert!(err.to_string().contains("expired"));
+    }
+
+    #[test]
+    fn test_request_error_display() {
+        let err = EfiError::RequestError("connection refused".into());
+        assert!(err.to_string().contains("connection refused"));
+    }
+
+    #[test]
+    fn test_json_error_display() {
+        let err = EfiError::JsonError("parse error".into());
+        assert!(err.to_string().contains("parse error"));
+    }
+
+    #[test]
+    fn test_json_error_conversion() {
+        let json_err: serde_json::Error = serde_json::from_str::<String>("invalid").unwrap_err();
+        let efi_err = EfiError::from(json_err);
+        assert!(matches!(efi_err, EfiError::JsonError(_)));
+    }
+
+    #[test]
+    fn test_request_error_to_provider() {
+        let efi_err = EfiError::RequestError("timeout".into());
+        let provider_err: ProviderError = efi_err.into();
+        assert!(matches!(provider_err, ProviderError::Network(_)));
+    }
+
+    #[test]
+    fn test_json_error_to_provider() {
+        let efi_err = EfiError::JsonError("parse".into());
+        let provider_err: ProviderError = efi_err.into();
+        assert!(matches!(provider_err, ProviderError::Serialization(_)));
+    }
+
+    #[test]
+    fn test_io_error_to_provider() {
+        let efi_err = EfiError::IoError("not found".into());
+        let provider_err: ProviderError = efi_err.into();
+        assert!(matches!(provider_err, ProviderError::Io(_)));
+    }
+}

@@ -148,3 +148,107 @@ mod tests {
         assert!(find_tag(&entries, "99").is_none());
     }
 }
+
+#[cfg(test)]
+mod additional_tlv_tests {
+    use super::*;
+
+    #[test]
+    fn test_tlv_encode_empty_value() {
+        let entry = TlvEntry::new("99", "");
+        assert_eq!(entry.encode(), "9900");
+    }
+
+    #[test]
+    fn test_tlv_encode_long_value() {
+        let value = "A".repeat(99);
+        let entry = TlvEntry::new("26", &value);
+        let encoded = entry.encode();
+        assert!(encoded.starts_with("2699"));
+        assert_eq!(encoded.len(), 4 + 99);
+    }
+
+    #[test]
+    fn test_tlv_parse_empty_input() {
+        let entries = parse_tlv("").unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_tlv_parse_three_entries() {
+        let entries = parse_tlv("000201010211520400005303986").unwrap();
+        assert!(entries.len() >= 3);
+    }
+
+    #[test]
+    fn test_tlv_entry_equality() {
+        let a = TlvEntry::new("00", "01");
+        let b = TlvEntry::new("00", "01");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_tlv_entry_inequality() {
+        let a = TlvEntry::new("00", "01");
+        let b = TlvEntry::new("00", "02");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_tlv_parse_nested_content() {
+        // Simulate merchant account info sub-tags
+        let inner = format!(
+            "{}{}",
+            TlvEntry::new("00", "BR.GOV.BCB.PIX").encode(),
+            TlvEntry::new("01", "key@test.com").encode()
+        );
+        let outer = TlvEntry::new("26", &inner);
+        let encoded = outer.encode();
+
+        let entries = parse_tlv(&encoded).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].tag, "26");
+
+        // Parse inner
+        let inner_entries = parse_tlv(&entries[0].value).unwrap();
+        assert_eq!(inner_entries.len(), 2);
+        assert_eq!(inner_entries[0].tag, "00");
+        assert_eq!(inner_entries[0].value, "BR.GOV.BCB.PIX");
+        assert_eq!(inner_entries[1].tag, "01");
+        assert_eq!(inner_entries[1].value, "key@test.com");
+    }
+
+    #[test]
+    fn test_find_tag_returns_first_match() {
+        let entries = vec![TlvEntry::new("01", "first"), TlvEntry::new("01", "second")];
+        let found = find_tag(&entries, "01").unwrap();
+        assert_eq!(found.value, "first");
+    }
+
+    #[test]
+    fn test_find_tag_not_found() {
+        let entries = vec![TlvEntry::new("00", "01")];
+        assert!(find_tag(&entries, "99").is_none());
+    }
+
+    #[test]
+    fn test_tlv_parse_malformed_short_length() {
+        // Tag "00" with only 1 char left for length
+        assert!(parse_tlv("001").is_err());
+    }
+
+    #[test]
+    fn test_tlv_clone() {
+        let entry = TlvEntry::new("00", "01");
+        let cloned = entry.clone();
+        assert_eq!(entry, cloned);
+    }
+
+    #[test]
+    fn test_tlv_debug() {
+        let entry = TlvEntry::new("00", "01");
+        let debug = format!("{:?}", entry);
+        assert!(debug.contains("00"));
+        assert!(debug.contains("01"));
+    }
+}

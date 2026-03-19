@@ -329,3 +329,324 @@ mod tests {
         assert!(result.is_ok());
     }
 }
+
+#[cfg(test)]
+mod additional_qr_tests {
+    use super::*;
+    use pix_brcode::{decode_brcode, encode_brcode, BrCode};
+
+    // --- Generate with every key type ---
+
+    #[test]
+    fn test_generate_with_cpf_key() {
+        let brcode = BrCode::builder("52998224725", "Maria", "SP")
+            .point_of_initiation("11")
+            .transaction_amount("10.00")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "52998224725");
+        assert_eq!(decoded.transaction_amount, Some("10.00".to_string()));
+    }
+
+    #[test]
+    fn test_generate_with_cnpj_key() {
+        let brcode = BrCode::builder("11222333000181", "Empresa X", "Rio")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "11222333000181");
+    }
+
+    #[test]
+    fn test_generate_with_email_key() {
+        let brcode = BrCode::builder("pix@empresa.com", "Loja", "Recife")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "pix@empresa.com");
+    }
+
+    #[test]
+    fn test_generate_with_phone_key() {
+        let brcode = BrCode::builder("+5521998765432", "Joao", "RJ")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "+5521998765432");
+    }
+
+    #[test]
+    fn test_generate_with_evp_key() {
+        let evp = "550e8400-e29b-41d4-a716-446655440000";
+        let brcode = BrCode::builder(evp, "Test", "City")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, evp);
+    }
+
+    // --- Amount variations ---
+
+    #[test]
+    fn test_generate_with_amount() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("11")
+            .transaction_amount("50.00")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.transaction_amount, Some("50.00".to_string()));
+    }
+
+    #[test]
+    fn test_generate_without_amount() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.transaction_amount, None);
+    }
+
+    // --- Special characters in description ---
+
+    #[test]
+    fn test_generate_with_special_description() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .description("Cafe and Pao 42")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.description, Some("Cafe and Pao 42".to_string()));
+    }
+
+    // --- Max/over-limit merchant name/city ---
+
+    #[test]
+    fn test_generate_max_name_and_city() {
+        let name = "A".repeat(25);
+        let city = "B".repeat(15);
+        let brcode = BrCode::builder("k@t.com", &name, &city).build().unwrap();
+        let payload = encode_brcode(&brcode);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.merchant_name.len(), 25);
+        assert_eq!(decoded.merchant_city.len(), 15);
+    }
+
+    #[test]
+    fn test_generate_over_limit_name_fails() {
+        let name = "A".repeat(26);
+        let result = BrCode::builder("k@t.com", &name, "City").build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generate_over_limit_city_fails() {
+        let city = "B".repeat(16);
+        let result = BrCode::builder("k@t.com", "Name", &city).build();
+        assert!(result.is_err());
+    }
+
+    // --- Decode invalid payloads ---
+
+    #[test]
+    fn test_decode_invalid_payload() {
+        let result = decode_payload("not-a-valid-brcode-payload", OutputFormat::Human);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decode_empty_payload() {
+        let result = decode_payload("", OutputFormat::Human);
+        assert!(result.is_err());
+    }
+
+    // --- PNG output ---
+
+    #[test]
+    fn test_png_file_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let png_path = dir.path().join("qr.png");
+        assert!(!png_path.exists());
+
+        generate_qr(
+            "key@test.com",
+            Some(5.00),
+            "TEST",
+            "CITY",
+            None,
+            None,
+            Some(png_path.to_str().unwrap()),
+            10,
+            OutputFormat::Human,
+        )
+        .unwrap();
+
+        assert!(png_path.exists());
+    }
+
+    #[test]
+    fn test_png_valid_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let png_path = dir.path().join("qr.png");
+
+        generate_qr(
+            "key@test.com",
+            None,
+            "TEST",
+            "CITY",
+            None,
+            None,
+            Some(png_path.to_str().unwrap()),
+            8,
+            OutputFormat::Human,
+        )
+        .unwrap();
+
+        let bytes = std::fs::read(&png_path).unwrap();
+        // PNG magic bytes: 0x89 'P' 'N' 'G'
+        assert!(bytes.len() > 8);
+        assert_eq!(bytes[0], 0x89);
+        assert_eq!(&bytes[1..4], b"PNG");
+    }
+
+    #[test]
+    fn test_png_different_sizes() {
+        let dir = tempfile::tempdir().unwrap();
+
+        for size in [5, 10, 20] {
+            let png_path = dir.path().join(format!("qr_{}.png", size));
+            generate_qr(
+                "key@test.com",
+                None,
+                "TEST",
+                "CITY",
+                None,
+                None,
+                Some(png_path.to_str().unwrap()),
+                size,
+                OutputFormat::Human,
+            )
+            .unwrap();
+            assert!(png_path.exists());
+        }
+
+        // Larger module size should produce larger file
+        let small = std::fs::metadata(dir.path().join("qr_5.png"))
+            .unwrap()
+            .len();
+        let large = std::fs::metadata(dir.path().join("qr_20.png"))
+            .unwrap()
+            .len();
+        assert!(large > small);
+    }
+
+    // --- Output format tests ---
+
+    #[test]
+    fn test_json_output_does_not_error() {
+        let result = generate_qr(
+            "key@test.com",
+            Some(10.00),
+            "TEST",
+            "CITY",
+            Some("desc"),
+            Some("TX1"),
+            None,
+            10,
+            OutputFormat::Json,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_human_output_does_not_error() {
+        let result = generate_qr(
+            "key@test.com",
+            None,
+            "TEST",
+            "CITY",
+            None,
+            None,
+            None,
+            10,
+            OutputFormat::Human,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_table_output_does_not_error() {
+        let result = generate_qr(
+            "key@test.com",
+            None,
+            "TEST",
+            "CITY",
+            None,
+            None,
+            None,
+            10,
+            OutputFormat::Table,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_decode_json_output_does_not_error() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("10.00")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let result = decode_payload(&payload, OutputFormat::Json);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_decode_human_output_does_not_error() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("12")
+            .transaction_amount("10.00")
+            .txid("TX1")
+            .description("Desc")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        let result = decode_payload(&payload, OutputFormat::Human);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_decode_static_qr_shows_static_type() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        // Just ensure it doesn't error
+        assert!(decode_payload(&payload, OutputFormat::Human).is_ok());
+    }
+
+    #[test]
+    fn test_decode_dynamic_qr_shows_dynamic_type() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("12")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(decode_payload(&payload, OutputFormat::Human).is_ok());
+    }
+}

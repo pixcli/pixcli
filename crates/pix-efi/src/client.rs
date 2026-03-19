@@ -948,3 +948,410 @@ mod tests {
         assert!(matches!(result, Err(ProviderError::RateLimited { .. })));
     }
 }
+
+#[cfg(test)]
+mod additional_client_tests {
+    use super::*;
+
+    fn make_charge_response(status: &str) -> EfiChargeResponse {
+        EfiChargeResponse {
+            txid: "test_txid".to_string(),
+            status: status.to_string(),
+            calendario: EfiCalendarioResponse {
+                criacao: Utc::now(),
+                expiracao: 3600,
+            },
+            valor: EfiValor {
+                original: "10.00".to_string(),
+            },
+            chave: "key@test.com".to_string(),
+            solicitacao_pagador: None,
+            devedor: None,
+            pix_copia_e_cola: None,
+            pix: None,
+        }
+    }
+
+    // --- Status mapping ---
+
+    #[test]
+    fn test_status_ativa() {
+        assert_eq!(
+            make_charge_response("ATIVA").to_status(),
+            ChargeStatus::Active
+        );
+    }
+
+    #[test]
+    fn test_status_concluida() {
+        assert_eq!(
+            make_charge_response("CONCLUIDA").to_status(),
+            ChargeStatus::Completed
+        );
+    }
+
+    #[test]
+    fn test_status_removida_usuario() {
+        assert_eq!(
+            make_charge_response("REMOVIDA_PELO_USUARIO_RECEBEDOR").to_status(),
+            ChargeStatus::RemovedByUser
+        );
+    }
+
+    #[test]
+    fn test_status_removida_psp() {
+        assert_eq!(
+            make_charge_response("REMOVIDA_PELO_PSP").to_status(),
+            ChargeStatus::RemovedByPsp
+        );
+    }
+
+    #[test]
+    fn test_status_unknown_defaults_to_expired() {
+        assert_eq!(
+            make_charge_response("UNKNOWN").to_status(),
+            ChargeStatus::Expired
+        );
+    }
+
+    // --- check_response edge cases ---
+
+    #[test]
+    fn test_check_response_200() {
+        assert!(EfiClient::check_response(reqwest::StatusCode::OK, "body").is_ok());
+    }
+
+    #[test]
+    fn test_check_response_201() {
+        assert!(EfiClient::check_response(reqwest::StatusCode::CREATED, "").is_ok());
+    }
+
+    #[test]
+    fn test_check_response_204() {
+        assert!(EfiClient::check_response(reqwest::StatusCode::NO_CONTENT, "").is_ok());
+    }
+
+    #[test]
+    fn test_check_response_401() {
+        let err = EfiClient::check_response(reqwest::StatusCode::UNAUTHORIZED, "msg").unwrap_err();
+        match err {
+            ProviderError::Authentication(msg) => assert!(msg.contains("msg")),
+            _ => panic!("unexpected error type"),
+        }
+    }
+
+    #[test]
+    fn test_check_response_403() {
+        let err = EfiClient::check_response(reqwest::StatusCode::FORBIDDEN, "msg").unwrap_err();
+        match err {
+            ProviderError::Authentication(msg) => assert!(msg.contains("msg")),
+            _ => panic!("unexpected error type"),
+        }
+    }
+
+    #[test]
+    fn test_check_response_404() {
+        let err =
+            EfiClient::check_response(reqwest::StatusCode::NOT_FOUND, "not here").unwrap_err();
+        match err {
+            ProviderError::NotFound(msg) => assert_eq!(msg, "not here"),
+            _ => panic!("unexpected error type"),
+        }
+    }
+
+    #[test]
+    fn test_check_response_429() {
+        let err =
+            EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "").unwrap_err();
+        match err {
+            ProviderError::RateLimited { retry_after_secs } => assert_eq!(retry_after_secs, 60),
+            _ => panic!("unexpected error type"),
+        }
+    }
+
+    #[test]
+    fn test_check_response_500() {
+        let err = EfiClient::check_response(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "error")
+            .unwrap_err();
+        match err {
+            ProviderError::Http { status, message } => {
+                assert_eq!(status, 500);
+                assert_eq!(message, "error");
+            }
+            _ => panic!("unexpected error type"),
+        }
+    }
+
+    #[test]
+    fn test_check_response_503() {
+        let err = EfiClient::check_response(reqwest::StatusCode::SERVICE_UNAVAILABLE, "down")
+            .unwrap_err();
+        match err {
+            ProviderError::Http { status, .. } => assert_eq!(status, 503),
+            _ => panic!("unexpected error type"),
+        }
+    }
+
+    // --- is_retryable ---
+
+    #[test]
+    fn test_retryable_rate_limited() {
+        assert!(EfiClient::is_retryable(&ProviderError::RateLimited {
+            retry_after_secs: 30
+        }));
+    }
+
+    #[test]
+    fn test_retryable_timeout() {
+        assert!(EfiClient::is_retryable(&ProviderError::Timeout(10)));
+    }
+
+    #[test]
+    fn test_retryable_503() {
+        assert!(EfiClient::is_retryable(&ProviderError::Http {
+            status: 503,
+            message: "".into()
+        }));
+    }
+
+    #[test]
+    fn test_retryable_502() {
+        assert!(EfiClient::is_retryable(&ProviderError::Http {
+            status: 502,
+            message: "".into()
+        }));
+    }
+
+    #[test]
+    fn test_retryable_network() {
+        assert!(EfiClient::is_retryable(&ProviderError::Network(
+            "err".into()
+        )));
+    }
+
+    #[test]
+    fn test_not_retryable_401() {
+        assert!(!EfiClient::is_retryable(&ProviderError::Authentication(
+            "".into()
+        )));
+    }
+
+    #[test]
+    fn test_not_retryable_404() {
+        assert!(!EfiClient::is_retryable(&ProviderError::NotFound(
+            "".into()
+        )));
+    }
+
+    #[test]
+    fn test_not_retryable_400() {
+        assert!(!EfiClient::is_retryable(&ProviderError::Http {
+            status: 400,
+            message: "".into()
+        }));
+    }
+
+    #[test]
+    fn test_not_retryable_500() {
+        assert!(!EfiClient::is_retryable(&ProviderError::Http {
+            status: 500,
+            message: "".into()
+        }));
+    }
+
+    #[test]
+    fn test_not_retryable_serialization() {
+        assert!(!EfiClient::is_retryable(&ProviderError::Serialization(
+            "".into()
+        )));
+    }
+
+    // --- generate_txid tests ---
+
+    #[test]
+    fn test_generate_txid_starts_with_pix() {
+        let txid = generate_txid();
+        assert!(txid.starts_with("pix"));
+    }
+
+    #[test]
+    fn test_generate_txid_length() {
+        let txid = generate_txid();
+        assert!(
+            txid.len() >= 26 && txid.len() <= 35,
+            "txid len: {}",
+            txid.len()
+        );
+    }
+
+    #[test]
+    fn test_generate_txid_alphanumeric() {
+        let txid = generate_txid();
+        assert!(txid.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn test_generate_txid_unique() {
+        let t1 = generate_txid();
+        let t2 = generate_txid();
+        assert_ne!(t1, t2);
+    }
+
+    // --- to_pix_charge ---
+
+    #[test]
+    fn test_to_pix_charge_no_debtor() {
+        let resp = make_charge_response("ATIVA");
+        let charge = resp.to_pix_charge();
+        assert!(charge.debtor.is_none());
+        assert!(charge.e2eids.is_empty());
+        assert!(charge.brcode.is_none());
+    }
+
+    #[test]
+    fn test_to_pix_charge_with_debtor_cpf() {
+        let resp = EfiChargeResponse {
+            devedor: Some(EfiDevedor {
+                nome: "João".to_string(),
+                cpf: Some("12345678900".to_string()),
+                cnpj: None,
+            }),
+            ..make_charge_response("ATIVA")
+        };
+        let charge = resp.to_pix_charge();
+        assert!(charge.debtor.is_some());
+        assert_eq!(charge.debtor.as_ref().unwrap().document, "12345678900");
+    }
+
+    #[test]
+    fn test_to_pix_charge_with_debtor_cnpj() {
+        let resp = EfiChargeResponse {
+            devedor: Some(EfiDevedor {
+                nome: "Empresa".to_string(),
+                cpf: None,
+                cnpj: Some("11222333000181".to_string()),
+            }),
+            ..make_charge_response("ATIVA")
+        };
+        let charge = resp.to_pix_charge();
+        assert_eq!(charge.debtor.as_ref().unwrap().document, "11222333000181");
+    }
+
+    #[test]
+    fn test_to_pix_charge_with_payments() {
+        let resp = EfiChargeResponse {
+            pix: Some(vec![
+                EfiPixPayment {
+                    end_to_end_id: "E1".to_string(),
+                },
+                EfiPixPayment {
+                    end_to_end_id: "E2".to_string(),
+                },
+            ]),
+            ..make_charge_response("CONCLUIDA")
+        };
+        let charge = resp.to_pix_charge();
+        assert_eq!(charge.e2eids.len(), 2);
+        assert_eq!(charge.e2eids[0], "E1");
+        assert_eq!(charge.e2eids[1], "E2");
+    }
+
+    #[test]
+    fn test_to_pix_charge_expires_at_calculated() {
+        let now = Utc::now();
+        let resp = EfiChargeResponse {
+            calendario: EfiCalendarioResponse {
+                criacao: now,
+                expiracao: 7200,
+            },
+            ..make_charge_response("ATIVA")
+        };
+        let charge = resp.to_pix_charge();
+        let expected = now + Duration::seconds(7200);
+        assert!((charge.expires_at - expected).num_seconds().abs() < 2);
+    }
+
+    // --- convert_pix_transaction ---
+
+    #[test]
+    fn test_convert_pix_transaction_minimal() {
+        let efi_tx = EfiPixTransaction {
+            end_to_end_id: "E1".to_string(),
+            txid: None,
+            valor: "1.00".to_string(),
+            horario: "2026-03-19T12:00:00Z".to_string(),
+            info_pagador: None,
+            pagador: None,
+        };
+        let tx = convert_pix_transaction(&efi_tx);
+        assert_eq!(tx.e2eid, "E1");
+        assert!(tx.txid.is_none());
+        assert!(tx.payer_name.is_none());
+        assert!(tx.payer_document.is_none());
+    }
+
+    #[test]
+    fn test_convert_pix_transaction_with_cnpj_payer() {
+        let efi_tx = EfiPixTransaction {
+            end_to_end_id: "E1".to_string(),
+            txid: None,
+            valor: "1.00".to_string(),
+            horario: "2026-03-19T12:00:00Z".to_string(),
+            info_pagador: None,
+            pagador: Some(EfiPagador {
+                cpf: None,
+                cnpj: Some("11222333000181".to_string()),
+                nome: Some("Empresa".to_string()),
+            }),
+        };
+        let tx = convert_pix_transaction(&efi_tx);
+        assert_eq!(tx.payer_document, Some("11222333000181".to_string()));
+    }
+
+    #[test]
+    fn test_convert_pix_transaction_bad_timestamp_uses_current() {
+        let efi_tx = EfiPixTransaction {
+            end_to_end_id: "E1".to_string(),
+            txid: None,
+            valor: "1.00".to_string(),
+            horario: "not-a-date".to_string(),
+            info_pagador: None,
+            pagador: None,
+        };
+        let tx = convert_pix_transaction(&efi_tx);
+        // Should not panic, uses Utc::now() fallback
+        assert!((Utc::now() - tx.timestamp).num_seconds().abs() < 5);
+    }
+
+    // --- WebhookInfo ---
+
+    #[test]
+    fn test_webhook_info_deserialize() {
+        let json = r#"{"webhookUrl":"https://example.com/webhook","chave":"key@test.com","criacao":"2026-03-19T00:00:00Z"}"#;
+        let info: WebhookInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.webhook_url, "https://example.com/webhook");
+        assert_eq!(info.chave, Some("key@test.com".to_string()));
+        assert_eq!(info.created_at, Some("2026-03-19T00:00:00Z".to_string()));
+    }
+
+    #[test]
+    fn test_webhook_info_serialize_roundtrip() {
+        let info = WebhookInfo {
+            webhook_url: "https://example.com".to_string(),
+            chave: Some("key".to_string()),
+            created_at: Some("2026-01-01".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let back: WebhookInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.webhook_url, info.webhook_url);
+    }
+
+    #[test]
+    fn test_webhook_info_minimal() {
+        let json = r#"{"webhookUrl":"https://example.com"}"#;
+        let info: WebhookInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.webhook_url, "https://example.com");
+        assert!(info.chave.is_none());
+        assert!(info.created_at.is_none());
+    }
+}

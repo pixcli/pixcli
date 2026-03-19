@@ -306,3 +306,465 @@ mod tests {
         assert_eq!(decoded.valor, event.valor);
     }
 }
+
+#[cfg(test)]
+mod additional_webhook_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn test_state() -> Arc<AppState> {
+        Arc::new(AppState {
+            forward_url: None,
+            output_file: None,
+            quiet: true,
+            http_client: reqwest::Client::new(),
+        })
+    }
+
+    fn test_app(state: Arc<AppState>) -> Router {
+        Router::new()
+            .route("/pix", post(handle_webhook))
+            .route("/health", get(|| async { "OK" }))
+            .with_state(state)
+    }
+
+    // --- Valid payload tests ---
+
+    #[tokio::test]
+    async fn test_valid_payload_all_fields() {
+        let app = test_app(test_state());
+        let payload = r#"{"pix":[{
+            "endToEndId":"E12345678202603191234567890123456",
+            "txid":"pix550e8400e29b41d4a716446655440000",
+            "valor":"100.50",
+            "horario":"2026-03-19T12:00:00.000Z",
+            "infoPagador":"Pagamento do pedido #123",
+            "chave":"+5511999999999",
+            "devolucoes":[{"id":"D1","rtrId":"R1","valor":"10.00","horario":{"solicitacao":"2026-03-19T13:00:00Z"},"status":"DEVOLVIDO"}]
+        }]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_valid_payload_minimal_fields() {
+        let app = test_app(test_state());
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pix_events() {
+        let app = test_app(test_state());
+        let payload = r#"{"pix":[
+            {"endToEndId":"E1","valor":"10.00","horario":"2026-03-19T01:00:00Z"},
+            {"endToEndId":"E2","valor":"20.00","horario":"2026-03-19T02:00:00Z"},
+            {"endToEndId":"E3","valor":"30.00","horario":"2026-03-19T03:00:00Z"},
+            {"endToEndId":"E4","valor":"40.00","horario":"2026-03-19T04:00:00Z"},
+            {"endToEndId":"E5","valor":"50.00","horario":"2026-03-19T05:00:00Z"}
+        ]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_empty_pix_array() {
+        let app = test_app(test_state());
+        let payload = r#"{"pix":[]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // --- Error cases ---
+
+    #[tokio::test]
+    async fn test_malformed_json_returns_400() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from("{invalid json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_empty_body_returns_400() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_wrong_json_structure_returns_422() {
+        let app = test_app(test_state());
+        // Valid JSON but wrong structure (missing "pix" key)
+        let payload = r#"{"events":[{"id":"1"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Axum returns 422 for valid JSON that doesn't match the expected type
+        assert!(
+            response.status() == StatusCode::UNPROCESSABLE_ENTITY
+                || response.status() == StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[tokio::test]
+    async fn test_large_payload() {
+        let app = test_app(test_state());
+        // Generate a large but valid payload
+        let mut events = Vec::new();
+        for i in 0..100 {
+            events.push(format!(
+                r#"{{"endToEndId":"E{:06}","valor":"1.00","horario":"2026-03-19T00:00:00Z"}}"#,
+                i
+            ));
+        }
+        let payload = format!(r#"{{"pix":[{}]}}"#, events.join(","));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // --- Health endpoint ---
+
+    #[tokio::test]
+    async fn test_health_returns_ok_body() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"OK");
+    }
+
+    // --- File output tests ---
+
+    #[tokio::test]
+    async fn test_multiple_events_create_multiple_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("events.jsonl");
+
+        let state = Arc::new(AppState {
+            forward_url: None,
+            output_file: Some(output_path.to_str().unwrap().to_string()),
+            quiet: true,
+            http_client: reqwest::Client::new(),
+        });
+        let app = test_app(state);
+
+        let payload = r#"{"pix":[
+            {"endToEndId":"E1","valor":"10.00","horario":"2026-03-19T01:00:00Z"},
+            {"endToEndId":"E2","valor":"20.00","horario":"2026-03-19T02:00:00Z"},
+            {"endToEndId":"E3","valor":"30.00","horario":"2026-03-19T03:00:00Z"}
+        ]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let content = std::fs::read_to_string(&output_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 3);
+
+        // Verify each line is valid JSON
+        for line in &lines {
+            let event: PixEvent = serde_json::from_str(line).unwrap();
+            assert!(!event.end_to_end_id.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_created_on_first_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("new_events.jsonl");
+        assert!(!output_path.exists());
+
+        let state = Arc::new(AppState {
+            forward_url: None,
+            output_file: Some(output_path.to_str().unwrap().to_string()),
+            quiet: true,
+            http_client: reqwest::Client::new(),
+        });
+        let app = test_app(state);
+
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"5.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        app.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/pix")
+                .header("Content-Type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert!(output_path.exists());
+    }
+
+    // --- Serialization tests ---
+
+    #[test]
+    fn test_pix_event_minimal_deserialization() {
+        let json = r#"{"endToEndId":"E1","valor":"1.00","horario":"2026-01-01T00:00:00Z"}"#;
+        let event: PixEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.end_to_end_id, "E1");
+        assert!(event.txid.is_none());
+        assert!(event.info_pagador.is_none());
+        assert!(event.chave.is_none());
+        assert!(event.devolucoes.is_none());
+    }
+
+    #[test]
+    fn test_pix_event_with_devolucoes() {
+        let json = r#"{
+            "endToEndId":"E1",
+            "valor":"100.00",
+            "horario":"2026-01-01T00:00:00Z",
+            "devolucoes":[
+                {"id":"D1","rtrId":"R1","valor":"50.00","status":"DEVOLVIDO"},
+                {"id":"D2","rtrId":"R2","valor":"50.00","status":"EM_PROCESSAMENTO"}
+            ]
+        }"#;
+        let event: PixEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.devolucoes.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_pix_event_serialization_preserves_field_names() {
+        let event = PixEvent {
+            end_to_end_id: "E999".to_string(),
+            txid: Some("TX1".to_string()),
+            valor: "42.00".to_string(),
+            horario: "2026-03-19T12:00:00Z".to_string(),
+            info_pagador: Some("test info".to_string()),
+            chave: Some("key@test.com".to_string()),
+            devolucoes: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        // Verify camelCase field names
+        assert!(json.contains("\"endToEndId\""));
+        assert!(json.contains("\"infoPagador\""));
+    }
+
+    #[test]
+    fn test_webhook_payload_deserialization() {
+        let json = r#"{"pix":[
+            {"endToEndId":"E1","valor":"10.00","horario":"2026-01-01T00:00:00Z"},
+            {"endToEndId":"E2","valor":"20.00","horario":"2026-01-02T00:00:00Z"}
+        ]}"#;
+        let payload: WebhookPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.pix.len(), 2);
+    }
+
+    #[test]
+    fn test_webhook_payload_empty_pix() {
+        let json = r#"{"pix":[]}"#;
+        let payload: WebhookPayload = serde_json::from_str(json).unwrap();
+        assert!(payload.pix.is_empty());
+    }
+
+    #[test]
+    fn test_webhook_payload_serialization_roundtrip() {
+        let payload = WebhookPayload {
+            pix: vec![
+                PixEvent {
+                    end_to_end_id: "E1".to_string(),
+                    txid: None,
+                    valor: "5.00".to_string(),
+                    horario: "2026-01-01T00:00:00Z".to_string(),
+                    info_pagador: None,
+                    chave: None,
+                    devolucoes: None,
+                },
+                PixEvent {
+                    end_to_end_id: "E2".to_string(),
+                    txid: Some("TX2".to_string()),
+                    valor: "15.00".to_string(),
+                    horario: "2026-01-02T00:00:00Z".to_string(),
+                    info_pagador: Some("Info".to_string()),
+                    chave: Some("key@test.com".to_string()),
+                    devolucoes: None,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: WebhookPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.pix.len(), 2);
+        assert_eq!(back.pix[0].end_to_end_id, "E1");
+        assert_eq!(back.pix[1].end_to_end_id, "E2");
+        assert_eq!(back.pix[1].txid, Some("TX2".to_string()));
+    }
+
+    #[test]
+    fn test_pix_event_with_all_optional_fields() {
+        let event = PixEvent {
+            end_to_end_id: "E12345".to_string(),
+            txid: Some("TX123".to_string()),
+            valor: "99.99".to_string(),
+            horario: "2026-03-19T15:30:00Z".to_string(),
+            info_pagador: Some("Payment for invoice #456".to_string()),
+            chave: Some("+5511999999999".to_string()),
+            devolucoes: Some(vec![serde_json::json!({"id": "D1", "valor": "10.00"})]),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let back: PixEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.info_pagador,
+            Some("Payment for invoice #456".to_string())
+        );
+        assert_eq!(back.chave, Some("+5511999999999".to_string()));
+        assert!(back.devolucoes.is_some());
+    }
+
+    // --- GET on /pix should return 405 ---
+
+    #[tokio::test]
+    async fn test_get_on_pix_returns_405() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/pix")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    // --- Unknown route ---
+
+    #[tokio::test]
+    async fn test_unknown_route_returns_404() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/unknown")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}

@@ -253,3 +253,146 @@ mod tests {
         assert!(json.contains("1234.56"));
     }
 }
+
+#[cfg(test)]
+mod additional_type_tests {
+    use super::*;
+
+    #[test]
+    fn test_debtor_serialize() {
+        let d = Debtor {
+            name: "João".to_string(),
+            document: "52998224725".to_string(),
+        };
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(json.contains("João"));
+        assert!(json.contains("52998224725"));
+    }
+
+    #[test]
+    fn test_debtor_deserialize() {
+        let json = r#"{"name":"Maria","document":"11222333000181"}"#;
+        let d: Debtor = serde_json::from_str(json).unwrap();
+        assert_eq!(d.name, "Maria");
+        assert_eq!(d.document, "11222333000181");
+    }
+
+    #[test]
+    fn test_charge_response_serialize() {
+        let resp = ChargeResponse {
+            txid: "tx1".to_string(),
+            brcode: "brcode".to_string(),
+            status: ChargeStatus::Active,
+            created_at: Utc::now(),
+            expires_at: Utc::now(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("tx1"));
+        assert!(json.contains("ACTIVE"));
+    }
+
+    #[test]
+    fn test_charge_response_deserialize_roundtrip() {
+        let resp = ChargeResponse {
+            txid: "tx1".to_string(),
+            brcode: "brcode".to_string(),
+            status: ChargeStatus::Completed,
+            created_at: Utc::now(),
+            expires_at: Utc::now(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let back: ChargeResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.txid, "tx1");
+        assert_eq!(back.status, ChargeStatus::Completed);
+    }
+
+    #[test]
+    fn test_pix_transfer_serialize() {
+        let t = PixTransfer {
+            e2eid: "E1".to_string(),
+            id_envio: "ID1".to_string(),
+            amount: "10.00".to_string(),
+            status: "REALIZADO".to_string(),
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(json.contains("REALIZADO"));
+    }
+
+    #[test]
+    fn test_transaction_filter_default() {
+        let f = TransactionFilter::default();
+        assert!(f.start.is_none());
+        assert!(f.end.is_none());
+        assert!(f.page.is_none());
+        assert!(f.per_page.is_none());
+    }
+
+    #[test]
+    fn test_transaction_filter_serialize() {
+        let f = TransactionFilter {
+            start: Some(Utc::now()),
+            end: Some(Utc::now()),
+            page: Some(0),
+            per_page: Some(10),
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(json.contains("page"));
+    }
+
+    #[test]
+    fn test_due_date_charge_request_serialize() {
+        let req = DueDateChargeRequest {
+            pix_key: "key@test.com".to_string(),
+            description: Some("desc".to_string()),
+            amount: "100.00".to_string(),
+            due_date: "2026-04-15".to_string(),
+            days_after_due: Some(3),
+            debtor: None,
+            txid: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("2026-04-15"));
+    }
+
+    #[test]
+    fn test_charge_status_all_variants_display() {
+        let statuses = vec![
+            (ChargeStatus::Active, "ACTIVE"),
+            (ChargeStatus::Completed, "COMPLETED"),
+            (ChargeStatus::RemovedByUser, "REMOVED_BY_USER"),
+            (ChargeStatus::RemovedByPsp, "REMOVED_BY_PSP"),
+            (ChargeStatus::Expired, "EXPIRED"),
+        ];
+        for (status, expected) in statuses {
+            assert_eq!(status.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn test_pix_charge_clone() {
+        let charge = PixCharge {
+            txid: "tx".to_string(),
+            status: ChargeStatus::Active,
+            amount: "10.00".to_string(),
+            pix_key: "key".to_string(),
+            description: None,
+            brcode: None,
+            debtor: None,
+            created_at: Utc::now(),
+            expires_at: Utc::now(),
+            e2eids: vec![],
+        };
+        let cloned = charge.clone();
+        assert_eq!(cloned.txid, charge.txid);
+    }
+
+    #[test]
+    fn test_balance_clone() {
+        let b = Balance {
+            available: "10.00".to_string(),
+        };
+        let c = b.clone();
+        assert_eq!(c.available, "10.00");
+    }
+}

@@ -255,3 +255,137 @@ mod tests {
         assert_eq!(deserialized.transaction_amount, brcode.transaction_amount);
     }
 }
+
+#[cfg(test)]
+mod additional_builder_tests {
+    use super::*;
+
+    #[test]
+    fn test_builder_merchant_name_exactly_25() {
+        let name = "A".repeat(25);
+        let brcode = BrCode::builder("key", &name, "City").build().unwrap();
+        assert_eq!(brcode.merchant_name, name);
+    }
+
+    #[test]
+    fn test_builder_merchant_name_26_fails() {
+        let name = "A".repeat(26);
+        let result = BrCode::builder("key", &name, "City").build();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            BrCodeError::FieldTooLong { field, max, actual } => {
+                assert_eq!(field, "merchant_name");
+                assert_eq!(max, 25);
+                assert_eq!(actual, 26);
+            }
+            e => panic!("unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_builder_merchant_city_exactly_15() {
+        let city = "B".repeat(15);
+        let brcode = BrCode::builder("key", "Name", &city).build().unwrap();
+        assert_eq!(brcode.merchant_city, city);
+    }
+
+    #[test]
+    fn test_builder_merchant_city_16_fails() {
+        let city = "B".repeat(16);
+        let result = BrCode::builder("key", "Name", &city).build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_amount_exactly_13_chars() {
+        let amount = "9".repeat(13);
+        let brcode = BrCode::builder("key", "Name", "City")
+            .transaction_amount(&amount)
+            .build()
+            .unwrap();
+        assert_eq!(brcode.transaction_amount, Some(amount));
+    }
+
+    #[test]
+    fn test_builder_amount_14_chars_fails() {
+        let amount = "9".repeat(14);
+        let result = BrCode::builder("key", "Name", "City")
+            .transaction_amount(&amount)
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_txid_exactly_25() {
+        let txid = "X".repeat(25);
+        let brcode = BrCode::builder("key", "Name", "City")
+            .txid(&txid)
+            .build()
+            .unwrap();
+        assert_eq!(brcode.txid, Some(txid));
+    }
+
+    #[test]
+    fn test_builder_txid_26_fails() {
+        let txid = "X".repeat(26);
+        let result = BrCode::builder("key", "Name", "City").txid(&txid).build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_empty_fields() {
+        let brcode = BrCode::builder("k", "N", "C").build().unwrap();
+        assert_eq!(brcode.pix_key, "k");
+        assert_eq!(brcode.merchant_name, "N");
+        assert_eq!(brcode.merchant_city, "C");
+    }
+
+    #[test]
+    fn test_builder_chaining() {
+        let brcode = BrCode::builder("key", "Name", "City")
+            .point_of_initiation("12")
+            .merchant_category_code("5812")
+            .transaction_amount("10.00")
+            .description("Desc")
+            .txid("TX1")
+            .build()
+            .unwrap();
+        assert_eq!(brcode.point_of_initiation, Some("12".to_string()));
+        assert_eq!(brcode.merchant_category_code, "5812");
+        assert_eq!(brcode.transaction_amount, Some("10.00".to_string()));
+        assert_eq!(brcode.description, Some("Desc".to_string()));
+        assert_eq!(brcode.txid, Some("TX1".to_string()));
+    }
+
+    #[test]
+    fn test_brcode_defaults() {
+        let brcode = BrCode::builder("key", "Name", "City").build().unwrap();
+        assert_eq!(brcode.payload_format_indicator, "01");
+        assert_eq!(brcode.transaction_currency, "986");
+        assert_eq!(brcode.country_code, "BR");
+        assert_eq!(brcode.merchant_category_code, "0000");
+        assert!(brcode.point_of_initiation.is_none());
+        assert!(brcode.transaction_amount.is_none());
+        assert!(brcode.description.is_none());
+        assert!(brcode.txid.is_none());
+        assert!(brcode.crc.is_empty());
+    }
+
+    #[test]
+    fn test_brcode_clone() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("10.00")
+            .build()
+            .unwrap();
+        let cloned = brcode.clone();
+        assert_eq!(cloned.pix_key, brcode.pix_key);
+        assert_eq!(cloned.transaction_amount, brcode.transaction_amount);
+    }
+
+    #[test]
+    fn test_brcode_debug() {
+        let brcode = BrCode::builder("key", "Name", "City").build().unwrap();
+        let debug = format!("{:?}", brcode);
+        assert!(debug.contains("BrCode"));
+    }
+}

@@ -256,3 +256,244 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod additional_encoder_tests {
+    use super::*;
+    use crate::BrCode;
+    use pix_core::crc16::validate_crc;
+
+    #[test]
+    fn test_encode_with_cpf_key() {
+        let brcode = BrCode::builder("52998224725", "Maria", "Sao Paulo")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("52998224725"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_cnpj_key() {
+        let brcode = BrCode::builder("11222333000181", "Empresa", "Rio")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("11222333000181"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_email_key() {
+        let brcode = BrCode::builder("pix@empresa.com.br", "Loja", "Recife")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("pix@empresa.com.br"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_phone_key() {
+        let brcode = BrCode::builder("+5511987654321", "Joao", "BH")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("+5511987654321"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_evp_key() {
+        let brcode = BrCode::builder("123e4567-e89b-12d3-a456-426614174000", "Test", "SP")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("123e4567-e89b-12d3-a456-426614174000"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_minimum_amount() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("0.01")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("0.01"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_large_amount() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("999999.99")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("999999.99"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_without_amount() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        // Tag 54 should NOT appear
+        assert!(!payload.contains("54"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_special_chars_description() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .description("Cafe and Pao 123")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_max_merchant_name_25() {
+        let name = "A".repeat(25);
+        let brcode = BrCode::builder("key@test.com", &name, "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains(&name));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_max_merchant_city_15() {
+        let city = "B".repeat(15);
+        let brcode = BrCode::builder("key@test.com", "Name", &city)
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains(&city));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_dynamic_qr() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("12")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("010212"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_static_qr() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("010211"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_no_point_of_initiation() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        // Tag "01" should not appear for POI
+        assert!(!payload.starts_with("00020101"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_custom_mcc() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .merchant_category_code("5812")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("52045812"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_txid() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .txid("PIX123")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("PIX123"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_with_all_fields() {
+        let brcode = BrCode::builder("test@example.com", "Fulano de Tal", "Sao Paulo")
+            .point_of_initiation("12")
+            .merchant_category_code("5812")
+            .transaction_amount("42.50")
+            .description("Pagamento teste")
+            .txid("TX999")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("test@example.com"));
+        assert!(payload.contains("42.50"));
+        assert!(payload.contains("TX999"));
+        assert!(payload.contains("Pagamento teste"));
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_brazilian_chars_in_description() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .description("Pagamento acao tres Joao")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_encode_payload_starts_with_000201() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.starts_with("000201"));
+    }
+
+    #[test]
+    fn test_encode_payload_contains_gui() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("BR.GOV.BCB.PIX"));
+    }
+
+    #[test]
+    fn test_encode_payload_contains_brl_currency() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("5303986"));
+    }
+
+    #[test]
+    fn test_encode_payload_contains_country_br() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("5802BR"));
+    }
+}

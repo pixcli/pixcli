@@ -53,3 +53,82 @@ pub enum ProviderError {
     #[error("I/O error: {0}")]
     Io(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_authentication_display() {
+        let err = ProviderError::Authentication("bad token".into());
+        assert!(err.to_string().contains("bad token"));
+    }
+
+    #[test]
+    fn test_http_display() {
+        let err = ProviderError::Http {
+            status: 500,
+            message: "server error".into(),
+        };
+        let s = err.to_string();
+        assert!(s.contains("500"));
+        assert!(s.contains("server error"));
+    }
+
+    #[test]
+    fn test_network_display() {
+        let err = ProviderError::Network("timeout".into());
+        assert!(err.to_string().contains("timeout"));
+    }
+
+    #[test]
+    fn test_invalid_response_display() {
+        let err = ProviderError::InvalidResponse("bad json".into());
+        assert!(err.to_string().contains("bad json"));
+    }
+
+    #[test]
+    fn test_certificate_display() {
+        let err = ProviderError::Certificate("expired".into());
+        assert!(err.to_string().contains("expired"));
+    }
+
+    #[test]
+    fn test_not_found_display() {
+        let err = ProviderError::NotFound("charge".into());
+        assert!(err.to_string().contains("charge"));
+    }
+
+    #[test]
+    fn test_rate_limited_display() {
+        let err = ProviderError::RateLimited {
+            retry_after_secs: 60,
+        };
+        assert!(err.to_string().contains("60"));
+    }
+
+    #[test]
+    fn test_serialization_display() {
+        let err = ProviderError::Serialization("parse error".into());
+        assert!(err.to_string().contains("parse error"));
+    }
+
+    #[test]
+    fn test_timeout_display() {
+        let err = ProviderError::Timeout(30);
+        assert!(err.to_string().contains("30"));
+    }
+
+    #[test]
+    fn test_io_display() {
+        let err = ProviderError::Io("file not found".into());
+        assert!(err.to_string().contains("file not found"));
+    }
+
+    #[test]
+    fn test_error_is_debug() {
+        let err = ProviderError::Network("test".into());
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("Network"));
+    }
+}

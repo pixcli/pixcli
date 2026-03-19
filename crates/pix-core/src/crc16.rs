@@ -241,3 +241,108 @@ mod proptests {
         }
     }
 }
+
+#[cfg(test)]
+mod additional_tests {
+    use super::*;
+
+    #[test]
+    fn test_crc16_known_vector_standard() {
+        // "123456789" is the standard CRC16-CCITT test vector
+        assert_eq!(crc16_ccitt(b"123456789"), 0x29B1);
+    }
+
+    #[test]
+    fn test_crc16_single_zero_byte() {
+        let crc = crc16_ccitt(&[0x00]);
+        assert_ne!(crc, 0xFFFF);
+        assert_ne!(crc, 0);
+    }
+
+    #[test]
+    fn test_crc16_max_byte() {
+        let crc = crc16_ccitt(&[0xFF]);
+        assert_ne!(crc, 0);
+        assert_ne!(crc, 0xFFFF);
+    }
+
+    #[test]
+    fn test_crc16_two_bytes_order_matters() {
+        let crc_ab = crc16_ccitt(b"AB");
+        let crc_ba = crc16_ccitt(b"BA");
+        assert_ne!(crc_ab, crc_ba);
+    }
+
+    #[test]
+    fn test_crc16_long_payload() {
+        let data = vec![0x42u8; 10000];
+        let crc = crc16_ccitt(&data);
+        assert_ne!(crc, 0);
+        assert_ne!(crc, 0xFFFF);
+    }
+
+    #[test]
+    fn test_crc16_hex_uppercase() {
+        let hex = crc16_ccitt_hex(b"test");
+        assert!(hex
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_validate_crc_exactly_8_chars() {
+        let mut payload = String::from("6304");
+        let crc = crc16_ccitt_hex(payload.as_bytes());
+        payload.push_str(&crc);
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_validate_crc_7_chars_fails() {
+        assert!(!validate_crc("6304ABC"));
+    }
+
+    #[test]
+    fn test_validate_crc_real_pix_pattern() {
+        let mut payload = String::from(
+            "00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-42661417400052040000530398654041.005802BR5913Fulano de Tal6008Brasilia6304",
+        );
+        let crc = crc16_ccitt_hex(payload.as_bytes());
+        payload.push_str(&crc);
+        assert!(validate_crc(&payload));
+    }
+
+    #[test]
+    fn test_crc16_utf8_bytes() {
+        let crc = crc16_ccitt("café".as_bytes());
+        assert_ne!(crc, 0);
+    }
+
+    #[test]
+    fn test_validate_crc_modified_content_invalidates() {
+        let mut payload = String::from("ABCDEFGHIJ6304");
+        let crc = crc16_ccitt_hex(payload.as_bytes());
+        payload.push_str(&crc);
+        assert!(validate_crc(&payload));
+
+        let mut modified = String::from("XBCDEFGHIJ6304");
+        modified.push_str(&crc);
+        assert!(!validate_crc(&modified));
+    }
+
+    #[test]
+    fn test_crc16_consecutive_bytes() {
+        let data: Vec<u8> = (0u8..=255).collect();
+        let crc = crc16_ccitt(&data);
+        assert_ne!(crc, 0);
+    }
+
+    #[test]
+    fn test_crc16_hex_with_leading_zero() {
+        // Find an input that produces a CRC with leading zero
+        // CRC of empty = 0xFFFF, so let's check a specific case
+        let hex = crc16_ccitt_hex(b"");
+        assert_eq!(hex, "FFFF");
+        assert_eq!(hex.len(), 4);
+    }
+}

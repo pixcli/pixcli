@@ -271,3 +271,285 @@ mod proptests {
         }
     }
 }
+
+#[cfg(test)]
+mod additional_decoder_tests {
+    use super::*;
+    use crate::encode_brcode;
+
+    #[test]
+    fn test_decode_empty_string() {
+        assert!(decode_brcode("").is_err());
+    }
+
+    #[test]
+    fn test_decode_short_string() {
+        assert!(decode_brcode("abc").is_err());
+    }
+
+    #[test]
+    fn test_decode_wrong_crc() {
+        let original = BrCode::builder("user@example.com", "Name", "City")
+            .build()
+            .unwrap();
+        let mut payload = encode_brcode(&original);
+        let len = payload.len();
+        payload.replace_range(len - 4..len, "FFFF");
+        let result = decode_brcode(&payload);
+        assert!(matches!(result, Err(BrCodeError::CrcMismatch { .. })));
+    }
+
+    #[test]
+    fn test_decode_missing_pfi_tag() {
+        // Payload without tag 00 but with valid CRC
+        let data = "26100014BR.GOV.BCB.PIX6304";
+        let crc = pix_core::crc16::crc16_ccitt_hex(data.as_bytes());
+        let payload = format!("{data}{crc}");
+        let result = decode_brcode(&payload);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_roundtrip_cpf_key() {
+        let original = BrCode::builder("52998224725", "Maria", "SP")
+            .point_of_initiation("11")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "52998224725");
+    }
+
+    #[test]
+    fn test_roundtrip_cnpj_key() {
+        let original = BrCode::builder("11222333000181", "Empresa", "RJ")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "11222333000181");
+    }
+
+    #[test]
+    fn test_roundtrip_email_key() {
+        let original = BrCode::builder("pix@empresa.com.br", "Loja ABC", "Recife")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "pix@empresa.com.br");
+    }
+
+    #[test]
+    fn test_roundtrip_phone_key() {
+        let original = BrCode::builder("+5511987654321", "Joao Silva", "BH")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "+5511987654321");
+    }
+
+    #[test]
+    fn test_roundtrip_evp_key() {
+        let original = BrCode::builder("123e4567-e89b-12d3-a456-426614174000", "Test", "SP")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.pix_key, "123e4567-e89b-12d3-a456-426614174000");
+    }
+
+    #[test]
+    fn test_roundtrip_with_min_amount() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("0.01")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.transaction_amount, Some("0.01".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_with_max_amount() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("999999.99")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.transaction_amount, Some("999999.99".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_dynamic_qr() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("12")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.point_of_initiation, Some("12".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_with_description() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .description("Pagamento do cafe")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.description, Some("Pagamento do cafe".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_with_all_fields() {
+        let original = BrCode::builder(
+            "test@example.com",
+            "Fulano de Tal Sobrenome",
+            "Sao Paulo SP",
+        )
+        .point_of_initiation("12")
+        .merchant_category_code("5812")
+        .transaction_amount("42.50")
+        .description("Pagamento teste")
+        .txid("TX999")
+        .build()
+        .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+
+        assert_eq!(decoded.pix_key, "test@example.com");
+        assert_eq!(decoded.merchant_name, "Fulano de Tal Sobrenome");
+        assert_eq!(decoded.merchant_city, "Sao Paulo SP");
+        assert_eq!(decoded.point_of_initiation, Some("12".to_string()));
+        assert_eq!(decoded.merchant_category_code, "5812");
+        assert_eq!(decoded.transaction_amount, Some("42.50".to_string()));
+        assert_eq!(decoded.description, Some("Pagamento teste".to_string()));
+        assert_eq!(decoded.txid, Some("TX999".to_string()));
+        assert_eq!(decoded.transaction_currency, "986");
+        assert_eq!(decoded.country_code, "BR");
+        assert_eq!(decoded.payload_format_indicator, "01");
+    }
+
+    #[test]
+    fn test_roundtrip_max_length_name_and_city() {
+        let name = "A".repeat(25);
+        let city = "B".repeat(15);
+        let original = BrCode::builder("key@t.com", &name, &city).build().unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.merchant_name, name);
+        assert_eq!(decoded.merchant_city, city);
+    }
+
+    #[test]
+    fn test_decode_re_encode_matches() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("11")
+            .transaction_amount("10.00")
+            .txid("TX123")
+            .build()
+            .unwrap();
+        let payload1 = encode_brcode(&original);
+        let decoded = decode_brcode(&payload1).unwrap();
+
+        // Re-encode
+        let mut builder = BrCode::builder(
+            &decoded.pix_key,
+            &decoded.merchant_name,
+            &decoded.merchant_city,
+        );
+        if let Some(ref poi) = decoded.point_of_initiation {
+            builder = builder.point_of_initiation(poi);
+        }
+        builder = builder.merchant_category_code(&decoded.merchant_category_code);
+        if let Some(ref amount) = decoded.transaction_amount {
+            builder = builder.transaction_amount(amount);
+        }
+        if let Some(ref desc) = decoded.description {
+            builder = builder.description(desc);
+        }
+        if let Some(ref txid) = decoded.txid {
+            builder = builder.txid(txid);
+        }
+        let brcode2 = builder.build().unwrap();
+        let payload2 = encode_brcode(&brcode2);
+        assert_eq!(payload1, payload2);
+    }
+
+    #[test]
+    fn test_decode_ascii_description_roundtrip() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .description("Acao tres Joao cafe nao")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(
+            decoded.description,
+            Some("Acao tres Joao cafe nao".to_string())
+        );
+    }
+
+    #[test]
+    fn test_decode_crc_stored_correctly() {
+        let original = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+        assert_eq!(decoded.crc.len(), 4);
+        assert!(decoded.crc.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+}
+
+#[cfg(test)]
+mod additional_proptests {
+    use super::*;
+    use crate::encode_brcode;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn roundtrip_with_amount(
+            key in "[a-z]{3,10}@[a-z]{3,8}\\.[a-z]{2,3}",
+            name in "[A-Z]{1,25}",
+            city in "[A-Z]{1,15}",
+            amount_int in 1u32..99999,
+            amount_dec in 0u32..100,
+        ) {
+            let amount = format!("{}.{:02}", amount_int, amount_dec);
+            let trimmed_name = &name[..name.len().min(25)];
+            let trimmed_city = &city[..city.len().min(15)];
+            if let Ok(brcode) = crate::BrCode::builder(&key, trimmed_name, trimmed_city)
+                .transaction_amount(&amount)
+                .build()
+            {
+                let payload = encode_brcode(&brcode);
+                let decoded = decode_brcode(&payload).unwrap();
+                prop_assert_eq!(decoded.transaction_amount, Some(amount));
+                prop_assert_eq!(&decoded.pix_key, &key);
+                prop_assert_eq!(&decoded.merchant_name, trimmed_name);
+                prop_assert_eq!(&decoded.merchant_city, trimmed_city);
+            }
+        }
+
+        #[test]
+        fn roundtrip_with_description(
+            key in "[a-z]{5,10}@test\\.com",
+            desc in "[a-zA-Z0-9 ]{1,30}",
+        ) {
+            if let Ok(brcode) = crate::BrCode::builder(&key, "NAME", "CITY")
+                .description(&desc)
+                .build()
+            {
+                let payload = encode_brcode(&brcode);
+                let decoded = decode_brcode(&payload).unwrap();
+                prop_assert_eq!(decoded.description, Some(desc));
+            }
+        }
+    }
+}

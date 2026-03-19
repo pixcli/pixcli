@@ -161,3 +161,113 @@ mod tests {
         assert!(validate_e2eid("E123").is_err());
     }
 }
+
+#[cfg(test)]
+mod additional_validation_tests {
+    use super::*;
+
+    // --- txid edge cases ---
+
+    #[test]
+    fn test_txid_exactly_26_alphanumeric() {
+        assert!(validate_txid("abcdefghijklmnopqrstuvwxyz").is_ok());
+    }
+
+    #[test]
+    fn test_txid_exactly_35_alphanumeric() {
+        assert!(validate_txid("pix550e8400e29b41d4a716446655440000").is_ok());
+    }
+
+    #[test]
+    fn test_txid_mixed_case_valid() {
+        assert!(validate_txid("ABCDEFghijklmnopqrstuvwxyz").is_ok());
+    }
+
+    #[test]
+    fn test_txid_all_digits() {
+        assert!(validate_txid("12345678901234567890123456").is_ok());
+    }
+
+    #[test]
+    fn test_txid_with_spaces_fails() {
+        assert!(validate_txid("pix 550e8400e29b41d4a71644665").is_err());
+    }
+
+    #[test]
+    fn test_txid_with_special_chars_fails() {
+        assert!(validate_txid("pix550e8400@e29b41d4a71644665").is_err());
+    }
+
+    #[test]
+    fn test_txid_empty_fails() {
+        assert!(validate_txid("").is_err());
+    }
+
+    // --- amount edge cases ---
+
+    #[test]
+    fn test_amount_minimum_valid() {
+        assert!(validate_amount("0.01").is_ok());
+    }
+
+    #[test]
+    fn test_amount_maximum_practical() {
+        assert!(validate_amount("999999.99").is_ok());
+    }
+
+    #[test]
+    fn test_amount_one_real() {
+        assert!(validate_amount("1.00").is_ok());
+    }
+
+    #[test]
+    fn test_amount_empty_string_fails() {
+        assert!(validate_amount("").is_err());
+    }
+
+    #[test]
+    fn test_amount_just_dot_fails() {
+        assert!(validate_amount(".50").is_err());
+    }
+
+    #[test]
+    fn test_amount_trailing_dot_fails() {
+        assert!(validate_amount("10.").is_err());
+    }
+
+    #[test]
+    fn test_amount_multiple_dots_fails() {
+        assert!(validate_amount("10.00.00").is_err());
+    }
+
+    #[test]
+    fn test_amount_negative_number_fails() {
+        assert!(validate_amount("-10.00").is_err());
+    }
+
+    // --- e2eid edge cases ---
+
+    #[test]
+    fn test_e2eid_exactly_32_chars_starting_with_e() {
+        let e2eid = format!("E{}", "A".repeat(31));
+        assert!(validate_e2eid(&e2eid).is_ok());
+    }
+
+    #[test]
+    fn test_e2eid_all_digits_after_e() {
+        let e2eid = format!("E{}", "1".repeat(31));
+        assert!(validate_e2eid(&e2eid).is_ok());
+    }
+
+    #[test]
+    fn test_e2eid_no_e_prefix_fails() {
+        let e2eid = "A".repeat(32);
+        assert!(validate_e2eid(&e2eid).is_err());
+    }
+
+    #[test]
+    fn test_e2eid_lowercase_e_fails() {
+        let e2eid = format!("e{}", "1".repeat(31));
+        assert!(validate_e2eid(&e2eid).is_err());
+    }
+}
