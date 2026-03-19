@@ -7,6 +7,7 @@ pub mod auth;
 pub mod client;
 pub mod config;
 pub mod error;
+pub mod validate;
 
 pub use client::EfiClient;
 pub use config::{EfiConfig, EfiEnvironment};
