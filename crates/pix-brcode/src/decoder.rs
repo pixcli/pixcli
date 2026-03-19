@@ -200,6 +200,31 @@ mod tests {
     }
 
     #[test]
+    fn test_roundtrip_with_description() {
+        let original = BrCode::builder("user@example.com", "Fulano", "Brasilia")
+            .description("Pagamento cafe")
+            .transaction_amount("5.50")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+
+        assert_eq!(decoded.description, Some("Pagamento cafe".to_string()));
+        assert_eq!(decoded.transaction_amount, Some("5.50".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_no_description() {
+        let original = BrCode::builder("user@example.com", "Fulano", "Brasilia")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&original);
+        let decoded = decode_brcode(&payload).unwrap();
+
+        assert_eq!(decoded.description, None);
+    }
+
+    #[test]
     fn test_roundtrip_static_qr_no_amount() {
         let original = BrCode::builder("pix@email.com", "Loja", "Rio")
             .point_of_initiation("11")

@@ -202,4 +202,57 @@ mod tests {
             !payload.contains("5405") && !payload.contains("5404") && !payload.contains("5403")
         );
     }
+
+    #[test]
+    fn test_encode_with_description() {
+        let brcode = BrCode::builder("user@example.com", "Fulano", "Brasilia")
+            .description("Pagamento cafe")
+            .build()
+            .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(payload.contains("Pagamento cafe"));
+
+        // Verify CRC is still valid
+        let without_crc = &payload[..payload.len() - 4];
+        let expected_crc = crc16_ccitt_hex(without_crc.as_bytes());
+        let actual_crc = &payload[payload.len() - 4..];
+        assert_eq!(expected_crc, actual_crc);
+    }
+
+    #[test]
+    fn test_encode_empty_description_ignored() {
+        let with_empty = BrCode::builder("key@test.com", "Name", "City")
+            .description("")
+            .build()
+            .unwrap();
+        let without = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+
+        let payload_with = encode_brcode(&with_empty);
+        let payload_without = encode_brcode(&without);
+
+        // Empty description should produce same payload as no description
+        assert_eq!(payload_with, payload_without);
+    }
+
+    #[test]
+    fn test_encode_payload_not_too_long() {
+        let brcode = BrCode::builder(
+            "user@example.com",
+            "A".repeat(25).as_str(),
+            "B".repeat(15).as_str(),
+        )
+        .transaction_amount("99999999.99")
+        .description("A long description for testing")
+        .txid("TXID1234567890")
+        .build()
+        .unwrap();
+        let payload = encode_brcode(&brcode);
+        assert!(
+            payload.len() <= 512,
+            "Payload too long: {} chars",
+            payload.len()
+        );
+    }
 }

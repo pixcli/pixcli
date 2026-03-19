@@ -167,3 +167,91 @@ impl BrCodeBuilder {
         Ok(brcode)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builder_basic() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .build()
+            .unwrap();
+        assert_eq!(brcode.pix_key, "key@test.com");
+        assert_eq!(brcode.merchant_name, "Name");
+        assert_eq!(brcode.merchant_city, "City");
+        assert_eq!(brcode.payload_format_indicator, "01");
+        assert_eq!(brcode.transaction_currency, "986");
+        assert_eq!(brcode.country_code, "BR");
+        assert_eq!(brcode.merchant_category_code, "0000");
+        assert!(brcode.transaction_amount.is_none());
+        assert!(brcode.txid.is_none());
+        assert!(brcode.description.is_none());
+    }
+
+    #[test]
+    fn test_builder_with_all_fields() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .point_of_initiation("12")
+            .merchant_category_code("5812")
+            .transaction_amount("50.00")
+            .description("Test payment")
+            .txid("TX123")
+            .build()
+            .unwrap();
+        assert_eq!(brcode.point_of_initiation, Some("12".to_string()));
+        assert_eq!(brcode.merchant_category_code, "5812");
+        assert_eq!(brcode.transaction_amount, Some("50.00".to_string()));
+        assert_eq!(brcode.description, Some("Test payment".to_string()));
+        assert_eq!(brcode.txid, Some("TX123".to_string()));
+    }
+
+    #[test]
+    fn test_builder_rejects_long_merchant_name() {
+        let result = BrCode::builder("key", &"A".repeat(26), "City").build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_rejects_long_merchant_city() {
+        let result = BrCode::builder("key", "Name", &"B".repeat(16)).build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_rejects_long_amount() {
+        let result = BrCode::builder("key", "Name", "City")
+            .transaction_amount(&"9".repeat(14))
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_rejects_long_txid() {
+        let result = BrCode::builder("key", "Name", "City")
+            .txid(&"X".repeat(26))
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_accepts_max_length_fields() {
+        let result = BrCode::builder("key", &"A".repeat(25), &"B".repeat(15))
+            .transaction_amount(&"9".repeat(13))
+            .txid(&"X".repeat(25))
+            .build();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_brcode_serialize_deserialize() {
+        let brcode = BrCode::builder("key@test.com", "Name", "City")
+            .transaction_amount("10.00")
+            .build()
+            .unwrap();
+        let json = serde_json::to_string(&brcode).unwrap();
+        let deserialized: BrCode = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.pix_key, brcode.pix_key);
+        assert_eq!(deserialized.transaction_amount, brcode.transaction_amount);
+    }
+}

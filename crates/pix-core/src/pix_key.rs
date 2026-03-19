@@ -554,4 +554,110 @@ mod tests {
         assert_eq!(key.key_type, PixKeyType::Email);
         assert_eq!(key.value, "test@example.com");
     }
+
+    // --- Additional Edge Case Tests ---
+
+    #[test]
+    fn test_valid_cpf_known_values() {
+        // Additional known-valid CPFs
+        assert!(PixKey::new(PixKeyType::Cpf, "11144477735").is_ok());
+        assert!(PixKey::new(PixKeyType::Cpf, "00000000191").is_ok()); // edge: starts with zeros
+    }
+
+    #[test]
+    fn test_invalid_cpf_all_same_digits_all_variants() {
+        for d in 0..=9 {
+            let cpf = format!("{}", d).repeat(11);
+            assert!(
+                PixKey::new(PixKeyType::Cpf, &cpf).is_err(),
+                "CPF {} should be invalid",
+                cpf
+            );
+        }
+    }
+
+    #[test]
+    fn test_valid_cnpj_known_values() {
+        assert!(PixKey::new(PixKeyType::Cnpj, "11222333000181").is_ok());
+        assert!(PixKey::new(PixKeyType::Cnpj, "11.222.333/0001-81").is_ok());
+    }
+
+    #[test]
+    fn test_invalid_cnpj_all_same_digits_all_variants() {
+        for d in 0..=9 {
+            let cnpj = format!("{}", d).repeat(14);
+            assert!(
+                PixKey::new(PixKeyType::Cnpj, &cnpj).is_err(),
+                "CNPJ {} should be invalid",
+                cnpj
+            );
+        }
+    }
+
+    #[test]
+    fn test_email_too_long() {
+        let long_local = "a".repeat(70);
+        let email = format!("{}@example.com", long_local);
+        assert!(PixKey::new(PixKeyType::Email, &email).is_err());
+    }
+
+    #[test]
+    fn test_email_empty_domain_label() {
+        assert!(PixKey::new(PixKeyType::Email, "user@.com").is_err());
+        assert!(PixKey::new(PixKeyType::Email, "user@example.").is_err());
+    }
+
+    #[test]
+    fn test_phone_with_non_digits() {
+        assert!(PixKey::new(PixKeyType::Phone, "+5511abc654321").is_err());
+    }
+
+    #[test]
+    fn test_phone_exact_boundaries() {
+        // 10 digits after +55: valid landline
+        assert!(PixKey::new(PixKeyType::Phone, "+5511325476981").is_ok());
+        // 9 digits after +55: too short
+        assert!(PixKey::new(PixKeyType::Phone, "+55113254769").is_err());
+        // 12 digits after +55: too long
+        assert!(PixKey::new(PixKeyType::Phone, "+551198765432100").is_err());
+    }
+
+    #[test]
+    fn test_detect_formatted_cpf() {
+        let key = PixKey::detect("529.982.247-25").unwrap();
+        assert_eq!(key.key_type, PixKeyType::Cpf);
+        assert_eq!(key.value, "52998224725");
+    }
+
+    #[test]
+    fn test_detect_formatted_cnpj() {
+        let key = PixKey::detect("11.222.333/0001-81").unwrap();
+        assert_eq!(key.key_type, PixKeyType::Cnpj);
+        assert_eq!(key.value, "11222333000181");
+    }
+
+    #[test]
+    fn test_detect_whitespace_trimmed() {
+        let key = PixKey::detect("  user@example.com  ").unwrap();
+        assert_eq!(key.key_type, PixKeyType::Email);
+        assert_eq!(key.value, "user@example.com");
+    }
+
+    #[test]
+    fn test_detect_empty_string() {
+        assert!(PixKey::detect("").is_err());
+    }
+
+    #[test]
+    fn test_detect_whitespace_only() {
+        assert!(PixKey::detect("   ").is_err());
+    }
+
+    #[test]
+    fn test_evp_uuid_v4_format() {
+        // Valid UUID v4
+        assert!(PixKey::new(PixKeyType::Evp, "550e8400-e29b-41d4-a716-446655440000").is_ok());
+        // Without hyphens should fail UUID parse
+        assert!(PixKey::new(PixKeyType::Evp, "550e8400e29b41d4a716446655440000").is_ok());
+    }
 }
