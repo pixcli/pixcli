@@ -240,6 +240,86 @@ impl EfiClient {
         }
         Err(last_err.unwrap_or_else(|| ProviderError::Network("max retries exceeded".to_string())))
     }
+
+    /// Makes an authenticated DELETE request to the Efí API.
+    async fn delete(&self, path: &str) -> Result<reqwest::Response, EfiError> {
+        let token = self.auth.get_token().await?;
+        let url = format!("{}{path}", self.auth.base_url());
+
+        let response = self
+            .auth
+            .http_client()
+            .delete(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await?;
+
+        Ok(response)
+    }
+
+    /// Registers a webhook URL for the given Pix key.
+    ///
+    /// Efí will append `/pix` to the provided URL when sending notifications.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProviderError` if the API call fails.
+    pub async fn register_webhook(
+        &self,
+        pix_key: &str,
+        webhook_url: &str,
+    ) -> Result<(), ProviderError> {
+        let path = format!("/v2/webhook/{pix_key}");
+        let body = serde_json::json!({ "webhookUrl": webhook_url });
+        let (_status, _body) = self.put_with_retry(&path, &body).await?;
+        Ok(())
+    }
+
+    /// Gets the registered webhook for the given Pix key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProviderError` if no webhook is registered or the API call fails.
+    pub async fn get_webhook(&self, pix_key: &str) -> Result<WebhookInfo, ProviderError> {
+        let path = format!("/v2/webhook/{pix_key}");
+        let (_status, body) = self.get_with_retry(&path).await?;
+        let info: WebhookInfo = serde_json::from_str(&body)
+            .map_err(|e| ProviderError::InvalidResponse(format!("failed to parse webhook: {e}")))?;
+        Ok(info)
+    }
+
+    /// Removes the webhook registered for the given Pix key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProviderError` if the API call fails.
+    pub async fn remove_webhook(&self, pix_key: &str) -> Result<(), ProviderError> {
+        let path = format!("/v2/webhook/{pix_key}");
+        let response = self.delete(&path).await.map_err(|e| {
+            let pe: ProviderError = e.into();
+            pe
+        })?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<no body>".to_string());
+        Self::check_response(status, &body)?;
+        Ok(())
+    }
+}
+
+/// Information about a registered webhook.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookInfo {
+    /// The registered webhook URL.
+    #[serde(rename = "webhookUrl")]
+    pub webhook_url: String,
+    /// The Pix key this webhook is registered for.
+    pub chave: Option<String>,
+    /// When the webhook was created.
+    #[serde(rename = "criacao")]
+    pub created_at: Option<String>,
 }
 
 // ── Efí API request/response types ──────────────────────────────────────────

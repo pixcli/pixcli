@@ -1,0 +1,308 @@
+//! HTTP request handlers for the Pix webhook server.
+
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::Json;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tracing::{error, info, warn};
+
+use crate::AppState;
+
+/// Top-level webhook payload sent by Efí.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct WebhookPayload {
+    /// List of Pix events in this notification.
+    pub pix: Vec<PixEvent>,
+}
+
+/// A single Pix event from a webhook notification.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PixEvent {
+    /// End-to-end identifier for the Pix transfer.
+    #[serde(rename = "endToEndId")]
+    pub end_to_end_id: String,
+    /// Transaction ID (may be absent for some events).
+    pub txid: Option<String>,
+    /// Amount as a string (e.g. "10.00").
+    pub valor: String,
+    /// Timestamp of the event.
+    pub horario: String,
+    /// Payer information text.
+    #[serde(rename = "infoPagador")]
+    pub info_pagador: Option<String>,
+    /// Pix key that received the payment.
+    pub chave: Option<String>,
+    /// Refund details, if any.
+    pub devolucoes: Option<Vec<serde_json::Value>>,
+}
+
+/// Handles incoming webhook POST requests at `/pix`.
+///
+/// Parses the Efí webhook payload, prints events to stdout (unless `--quiet`),
+/// optionally appends them to a JSONL file, and optionally forwards them via HTTP POST.
+pub async fn handle_webhook(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<WebhookPayload>,
+) -> StatusCode {
+    info!("Received webhook with {} event(s)", payload.pix.len());
+
+    for event in &payload.pix {
+        let event_json = match serde_json::to_string(event) {
+            Ok(j) => j,
+            Err(e) => {
+                error!("Failed to serialize event: {e}");
+                continue;
+            }
+        };
+
+        // Print to stdout
+        if !state.quiet {
+            if let Ok(pretty) = serde_json::to_string_pretty(event) {
+                println!("{pretty}");
+            }
+        }
+
+        // Append to file
+        if let Some(ref path) = state.output_file {
+            use std::io::Write;
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                Ok(mut file) => {
+                    if let Err(e) = writeln!(file, "{event_json}") {
+                        error!("Failed to write to {path}: {e}");
+                    }
+                }
+                Err(e) => error!("Failed to open {path}: {e}"),
+            }
+        }
+
+        // Forward to URL
+        if let Some(ref url) = state.forward_url {
+            let client = state.http_client.clone();
+            let url = url.clone();
+            let body = event_json.clone();
+            tokio::spawn(async move {
+                match client
+                    .post(&url)
+                    .body(body)
+                    .header("Content-Type", "application/json")
+                    .send()
+                    .await
+                {
+                    Ok(resp) => info!("Forwarded to {url}: {}", resp.status()),
+                    Err(e) => warn!("Failed to forward to {url}: {e}"),
+                }
+            });
+        }
+    }
+
+    StatusCode::OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn test_state() -> Arc<AppState> {
+        Arc::new(AppState {
+            forward_url: None,
+            output_file: None,
+            quiet: true,
+            http_client: reqwest::Client::new(),
+        })
+    }
+
+    fn test_app(state: Arc<AppState>) -> Router {
+        Router::new()
+            .route("/pix", post(handle_webhook))
+            .route("/health", get(|| async { "OK" }))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn test_valid_webhook_returns_200() {
+        let app = test_app(test_state());
+
+        let payload = r#"{"pix":[{"endToEndId":"E123","txid":"abc","valor":"10.00","horario":"2026-03-19T05:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_empty_pix_array_returns_200() {
+        let app = test_app(test_state());
+
+        let payload = r#"{"pix":[]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_malformed_json_returns_422() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from("not json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Axum returns 400 Bad Request for malformed JSON bodies
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint() {
+        let app = test_app(test_state());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_events_written_to_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("events.jsonl");
+
+        let state = Arc::new(AppState {
+            forward_url: None,
+            output_file: Some(output_path.to_str().unwrap().to_string()),
+            quiet: true,
+            http_client: reqwest::Client::new(),
+        });
+
+        let app = test_app(state);
+
+        let payload = r#"{"pix":[{"endToEndId":"E456","txid":"def","valor":"25.50","horario":"2026-03-19T10:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(output_path.exists());
+
+        let content = std::fs::read_to_string(&output_path).unwrap();
+        let event: PixEvent = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(event.end_to_end_id, "E456");
+        assert_eq!(event.valor, "25.50");
+    }
+
+    #[tokio::test]
+    async fn test_multiple_events_in_payload() {
+        let app = test_app(test_state());
+
+        let payload = r#"{"pix":[
+            {"endToEndId":"E1","valor":"10.00","horario":"2026-03-19T05:00:00Z"},
+            {"endToEndId":"E2","valor":"20.00","horario":"2026-03-19T06:00:00Z"}
+        ]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn test_pix_event_deserialization() {
+        let json = r#"{
+            "endToEndId": "E12345678202603191234",
+            "txid": "abc123",
+            "valor": "10.00",
+            "horario": "2026-03-19T05:21:00.000Z",
+            "infoPagador": "Payment note",
+            "chave": "+5511999999999"
+        }"#;
+
+        let event: PixEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.end_to_end_id, "E12345678202603191234");
+        assert_eq!(event.txid, Some("abc123".to_string()));
+        assert_eq!(event.valor, "10.00");
+        assert_eq!(event.chave, Some("+5511999999999".to_string()));
+    }
+
+    #[test]
+    fn test_pix_event_serialization_roundtrip() {
+        let event = PixEvent {
+            end_to_end_id: "E999".to_string(),
+            txid: Some("TX1".to_string()),
+            valor: "42.00".to_string(),
+            horario: "2026-03-19T12:00:00Z".to_string(),
+            info_pagador: Some("test".to_string()),
+            chave: Some("key@test.com".to_string()),
+            devolucoes: None,
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        let decoded: PixEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.end_to_end_id, event.end_to_end_id);
+        assert_eq!(decoded.valor, event.valor);
+    }
+}

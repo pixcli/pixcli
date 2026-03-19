@@ -9,6 +9,6 @@ pub mod config;
 pub mod error;
 pub mod validate;
 
-pub use client::EfiClient;
+pub use client::{EfiClient, WebhookInfo};
 pub use config::{EfiConfig, EfiEnvironment};
 pub use error::EfiError;
