@@ -1,4 +1,0 @@
-{
-  "title": "CLI Commands",
-  "pages": ["overview", "balance", "charge", "pix", "qr", "webhook", "config"]
-}

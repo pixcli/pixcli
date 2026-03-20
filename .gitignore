@@ -2,3 +2,12 @@
 *.p12
 *.pem
 .env
+
+# Backup dirs
+*.bak/
+.git.old/
+tests-generated/
+.full-review/
+.code-review-report/
+.security-audit/
+.rust-review/
