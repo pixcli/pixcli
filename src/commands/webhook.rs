@@ -3,6 +3,8 @@
 //! Register, query, and remove Efí Pix webhooks, and start a local
 //! webhook listener server.
 
+use std::path::Path;
+
 use anyhow::Result;
 use clap::Subcommand;
 
@@ -52,13 +54,14 @@ pub async fn run(
     profile: Option<&str>,
     sandbox: bool,
     format: OutputFormat,
+    config_path: Option<&Path>,
 ) -> Result<()> {
     match cmd {
         WebhookCommand::Register { key, url } => {
-            register(profile, sandbox, &key, &url, format).await
+            register(profile, sandbox, &key, &url, format, config_path).await
         }
-        WebhookCommand::Get { key } => get(profile, sandbox, &key, format).await,
-        WebhookCommand::Remove { key } => remove(profile, sandbox, &key, format).await,
+        WebhookCommand::Get { key } => get(profile, sandbox, &key, format, config_path).await,
+        WebhookCommand::Remove { key } => remove(profile, sandbox, &key, format, config_path).await,
         WebhookCommand::Listen {
             port,
             forward,
@@ -74,8 +77,9 @@ async fn register(
     key: &str,
     url: &str,
     format: OutputFormat,
+    config_path: Option<&Path>,
 ) -> Result<()> {
-    let config = crate::config::PixConfig::load(None)?;
+    let config = crate::config::PixConfig::load(config_path)?;
     let client = crate::client_factory::build_efi_client(&config, profile, sandbox)?;
 
     client.register_webhook(key, url).await?;
@@ -100,8 +104,14 @@ async fn register(
 }
 
 /// Gets the webhook info registered for a Pix key.
-async fn get(profile: Option<&str>, sandbox: bool, key: &str, format: OutputFormat) -> Result<()> {
-    let config = crate::config::PixConfig::load(None)?;
+async fn get(
+    profile: Option<&str>,
+    sandbox: bool,
+    key: &str,
+    format: OutputFormat,
+    config_path: Option<&Path>,
+) -> Result<()> {
+    let config = crate::config::PixConfig::load(config_path)?;
     let client = crate::client_factory::build_efi_client(&config, profile, sandbox)?;
 
     let info = client.get_webhook(key).await?;
@@ -128,8 +138,9 @@ async fn remove(
     sandbox: bool,
     key: &str,
     format: OutputFormat,
+    config_path: Option<&Path>,
 ) -> Result<()> {
-    let config = crate::config::PixConfig::load(None)?;
+    let config = crate::config::PixConfig::load(config_path)?;
     let client = crate::client_factory::build_efi_client(&config, profile, sandbox)?;
 
     client.remove_webhook(key).await?;
@@ -193,17 +204,13 @@ async fn listen(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
-    fn setup_config(content: &str) -> tempfile::TempDir {
+    fn setup_config(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, content).unwrap();
-        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
-        dir
-    }
-
-    fn cleanup() {
-        std::env::remove_var("PIXCLI_CONFIG");
+        (dir, path)
     }
 
     const TEST_CONFIG: &str = r#"
@@ -221,128 +228,133 @@ default_pix_key = "+5511999999999"
 
     #[tokio::test]
     async fn test_webhook_register_fails_missing_cert() {
-        let _dir = setup_config(TEST_CONFIG);
+        let (_dir, path) = setup_config(TEST_CONFIG);
         let result = register(
             None,
             false,
             "+5511999999999",
             "https://example.com/webhook",
             OutputFormat::Json,
+            Some(&path),
         )
         .await;
-        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_get_fails_missing_cert() {
-        let _dir = setup_config(TEST_CONFIG);
-        let result = get(None, false, "+5511999999999", OutputFormat::Human).await;
-        cleanup();
+        let (_dir, path) = setup_config(TEST_CONFIG);
+        let result = get(
+            None,
+            false,
+            "+5511999999999",
+            OutputFormat::Human,
+            Some(&path),
+        )
+        .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_remove_fails_missing_cert() {
-        let _dir = setup_config(TEST_CONFIG);
-        let result = remove(None, false, "+5511999999999", OutputFormat::Json).await;
-        cleanup();
+        let (_dir, path) = setup_config(TEST_CONFIG);
+        let result = remove(
+            None,
+            false,
+            "+5511999999999",
+            OutputFormat::Json,
+            Some(&path),
+        )
+        .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_register_no_profiles() {
-        let _dir = setup_config("");
+        let (_dir, path) = setup_config("");
         let result = register(
             None,
             false,
             "key",
             "https://example.com",
             OutputFormat::Human,
+            Some(&path),
         )
         .await;
-        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_get_no_profiles() {
-        let _dir = setup_config("");
-        let result = get(None, false, "key", OutputFormat::Json).await;
-        cleanup();
+        let (_dir, path) = setup_config("");
+        let result = get(None, false, "key", OutputFormat::Json, Some(&path)).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_remove_no_profiles() {
-        let _dir = setup_config("");
-        let result = remove(None, false, "key", OutputFormat::Human).await;
-        cleanup();
+        let (_dir, path) = setup_config("");
+        let result = remove(None, false, "key", OutputFormat::Human, Some(&path)).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_run_register() {
-        let _dir = setup_config(TEST_CONFIG);
+        let (_dir, path) = setup_config(TEST_CONFIG);
         let cmd = WebhookCommand::Register {
             key: "+5511999999999".to_string(),
             url: "https://example.com/webhook".to_string(),
         };
-        let result = run(cmd, None, false, OutputFormat::Json).await;
-        cleanup();
+        let result = run(cmd, None, false, OutputFormat::Json, Some(&path)).await;
         assert!(result.is_err()); // cert missing
     }
 
     #[tokio::test]
     async fn test_webhook_run_get() {
-        let _dir = setup_config(TEST_CONFIG);
+        let (_dir, path) = setup_config(TEST_CONFIG);
         let cmd = WebhookCommand::Get {
             key: "+5511999999999".to_string(),
         };
-        let result = run(cmd, None, false, OutputFormat::Human).await;
-        cleanup();
+        let result = run(cmd, None, false, OutputFormat::Human, Some(&path)).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_run_remove() {
-        let _dir = setup_config(TEST_CONFIG);
+        let (_dir, path) = setup_config(TEST_CONFIG);
         let cmd = WebhookCommand::Remove {
             key: "+5511999999999".to_string(),
         };
-        let result = run(cmd, None, false, OutputFormat::Json).await;
-        cleanup();
+        let result = run(cmd, None, false, OutputFormat::Json, Some(&path)).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_register_sandbox_flag() {
-        let _dir = setup_config(TEST_CONFIG);
+        let (_dir, path) = setup_config(TEST_CONFIG);
         let result = register(
             None,
             true,
             "key",
             "https://example.com",
             OutputFormat::Human,
+            Some(&path),
         )
         .await;
-        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_get_with_profile() {
-        let _dir = setup_config(TEST_CONFIG);
-        let result = get(Some("test"), false, "key", OutputFormat::Json).await;
-        cleanup();
+        let (_dir, path) = setup_config(TEST_CONFIG);
+        let result = get(Some("test"), false, "key", OutputFormat::Json, Some(&path)).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_remove_with_profile() {
-        let _dir = setup_config(TEST_CONFIG);
-        let result = remove(Some("test"), false, "key", OutputFormat::Table).await;
-        cleanup();
+        let (_dir, path) = setup_config(TEST_CONFIG);
+        let result = remove(Some("test"), false, "key", OutputFormat::Table, Some(&path)).await;
         assert!(result.is_err());
     }
 }

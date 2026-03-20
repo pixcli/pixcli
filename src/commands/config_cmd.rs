@@ -1,5 +1,7 @@
 //! `pixcli config` — configuration management commands.
 
+use std::path::Path;
+
 use anyhow::Result;
 use colored::Colorize;
 
@@ -16,19 +18,19 @@ pub enum ConfigCommand {
 }
 
 /// Runs a config sub-command.
-pub fn run(cmd: ConfigCommand, format: OutputFormat) -> Result<()> {
+pub fn run(cmd: ConfigCommand, format: OutputFormat, config_path: Option<&Path>) -> Result<()> {
     match cmd {
         ConfigCommand::Init => {
             crate::config::run_setup_wizard()?;
             Ok(())
         }
-        ConfigCommand::Show => show(format),
+        ConfigCommand::Show => show(format, config_path),
     }
 }
 
 /// Displays the current configuration, redacting secrets.
-fn show(format: OutputFormat) -> Result<()> {
-    let config = PixConfig::load(None)?;
+fn show(format: OutputFormat, config_path: Option<&Path>) -> Result<()> {
+    let config = PixConfig::load(config_path)?;
 
     match format {
         OutputFormat::Json => {
@@ -88,17 +90,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, content).unwrap();
-        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
         (dir, path)
-    }
-
-    fn cleanup() {
-        std::env::remove_var("PIXCLI_CONFIG");
     }
 
     #[test]
     fn test_show_json_with_profiles() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [defaults]
 profile = "prod"
@@ -113,14 +110,13 @@ certificate_password = "pass123"
 default_pix_key = "+5511999999999"
 "#,
         );
-        let result = show(OutputFormat::Json);
-        cleanup();
+        let result = show(OutputFormat::Json, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_show_human_with_profiles() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [defaults]
 profile = "test"
@@ -141,22 +137,20 @@ client_secret = "secret2"
 certificate = "/cert2.p12"
 "#,
         );
-        let result = show(OutputFormat::Human);
-        cleanup();
+        let result = show(OutputFormat::Human, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_show_human_empty_profiles() {
-        let (_dir, _path) = setup_config("");
-        let result = show(OutputFormat::Human);
-        cleanup();
+        let (_dir, path) = setup_config("");
+        let result = show(OutputFormat::Human, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_show_table_format() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [profiles.test]
 backend = "efi"
@@ -166,14 +160,13 @@ client_secret = "secret"
 certificate = "/cert.p12"
 "#,
         );
-        let result = show(OutputFormat::Table);
-        cleanup();
+        let result = show(OutputFormat::Table, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_run_show_command() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [profiles.test]
 backend = "efi"
@@ -183,14 +176,13 @@ client_secret = "secret"
 certificate = "/cert.p12"
 "#,
         );
-        let result = run(ConfigCommand::Show, OutputFormat::Human);
-        cleanup();
+        let result = run(ConfigCommand::Show, OutputFormat::Human, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_show_json_redacts_secrets() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [profiles.test]
 backend = "efi"
@@ -201,15 +193,13 @@ certificate = "/cert.p12"
 certificate_password = "actual_password"
 "#,
         );
-        // show prints to stdout; we just verify it doesn't error
-        let result = show(OutputFormat::Json);
-        cleanup();
+        let result = show(OutputFormat::Json, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_show_profile_no_pix_key() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [defaults]
 profile = "nopk"
@@ -222,14 +212,13 @@ client_secret = "secret"
 certificate = "/cert.p12"
 "#,
         );
-        let result = show(OutputFormat::Human);
-        cleanup();
+        let result = show(OutputFormat::Human, Some(&path));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_show_profile_empty_password_not_redacted() {
-        let (_dir, _path) = setup_config(
+        let (_dir, path) = setup_config(
             r#"
 [profiles.test]
 backend = "efi"
@@ -240,8 +229,7 @@ certificate = "/cert.p12"
 certificate_password = ""
 "#,
         );
-        let result = show(OutputFormat::Json);
-        cleanup();
+        let result = show(OutputFormat::Json, Some(&path));
         assert!(result.is_ok());
     }
 }

@@ -310,6 +310,8 @@ certificate = "cert.p12"
 
     #[test]
     fn test_env_overrides_apply() {
+        use std::collections::HashMap;
+
         let mut config = PixConfig::default();
         config.profiles.insert(
             "default".to_string(),
@@ -324,9 +326,11 @@ certificate = "cert.p12"
             },
         );
 
-        std::env::set_var("PIXCLI_CLIENT_ID", "env_id_override");
-        config.apply_env_overrides();
-        std::env::remove_var("PIXCLI_CLIENT_ID");
+        let env = HashMap::from([(
+            "PIXCLI_CLIENT_ID".to_string(),
+            "env_id_override".to_string(),
+        )]);
+        config.apply_env_overrides_from(&env);
 
         let profile = config.profiles.get("default").unwrap();
         assert_eq!(profile.client_id, "env_id_override");
@@ -335,6 +339,8 @@ certificate = "cert.p12"
 
     #[test]
     fn test_env_overrides_empty_profile_removed() {
+        use std::collections::HashMap;
+
         let mut config = PixConfig::default();
         config.profiles.insert(
             "default".to_string(),
@@ -349,13 +355,8 @@ certificate = "cert.p12"
             },
         );
 
-        std::env::remove_var("PIXCLI_CLIENT_ID");
-        std::env::remove_var("PIXCLI_CLIENT_SECRET");
-        std::env::remove_var("PIXCLI_CERTIFICATE");
-        std::env::remove_var("PIXCLI_CERTIFICATE_PASSWORD");
-        std::env::remove_var("PIXCLI_PIX_KEY");
-
-        config.apply_env_overrides();
+        let env = HashMap::new();
+        config.apply_env_overrides_from(&env);
         assert!(config.profiles.is_empty());
     }
 
@@ -440,17 +441,14 @@ default_pix_key = "+5511999999999"
     }
 
     #[test]
-    fn test_default_path_with_env_var() {
-        std::env::set_var("PIXCLI_CONFIG", "/custom/config.toml");
-        let path = PixConfig::default_path();
-        std::env::remove_var("PIXCLI_CONFIG");
+    fn test_default_path_with_env_override() {
+        let path = PixConfig::default_path_from_env(Some("/custom/config.toml".to_string()));
         assert_eq!(path, std::path::PathBuf::from("/custom/config.toml"));
     }
 
     #[test]
-    fn test_default_path_without_env_var() {
-        std::env::remove_var("PIXCLI_CONFIG");
-        let path = PixConfig::default_path();
+    fn test_default_path_without_env_override() {
+        let path = PixConfig::default_path_from_env(None);
         assert!(path.to_string_lossy().ends_with("config.toml"));
         assert!(path.to_string_lossy().contains(".pixcli"));
     }

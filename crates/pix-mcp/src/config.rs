@@ -5,15 +5,13 @@
 
 pub use pix_config::{PixConfig, Profile};
 
-/// Loads config from a specific path (used in tests).
-#[cfg(test)]
-pub fn load_config_from(path: &std::path::Path) -> anyhow::Result<PixConfig> {
-    PixConfig::load(Some(path))
-}
-
-/// Loads the MCP server config, requiring the file to exist.
-pub fn load_mcp_config() -> anyhow::Result<PixConfig> {
-    let config_path = PixConfig::default_path();
+/// Loads the MCP server config from a specific path or the default location.
+///
+/// Unlike `PixConfig::load`, this requires the file to exist.
+pub fn load_mcp_config(path: Option<&std::path::Path>) -> anyhow::Result<PixConfig> {
+    let config_path = path
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(PixConfig::default_path);
     if !config_path.exists() {
         anyhow::bail!(
             "Config file not found at {}. Run `pixcli config init` to create one.",
@@ -36,8 +34,12 @@ mod tests {
 
     #[test]
     fn test_load_missing_config_fails() {
-        std::env::remove_var("PIXCLI_CONFIG");
-        let _ = load_mcp_config();
+        let result = load_mcp_config(Some(std::path::Path::new(
+            "/tmp/nonexistent-mcp-config.toml",
+        )));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Config file not found"));
     }
 
     #[test]
@@ -60,7 +62,7 @@ certificate = "/path/to/cert.p12"
         )
         .unwrap();
 
-        let config = load_config_from(&path).unwrap();
+        let config = load_mcp_config(Some(&path)).unwrap();
         assert_eq!(config.defaults.profile, "test");
         let profile = config.get_profile(Some("test")).unwrap();
         assert_eq!(profile.client_id, "my_id");
@@ -92,7 +94,7 @@ certificate = "/path/to/cert.p12"
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "{{not valid}}").unwrap();
-        let result = load_config_from(&path);
+        let result = load_mcp_config(Some(&path));
         assert!(result.is_err());
     }
 
@@ -115,7 +117,7 @@ certificate = "cert.p12"
 "#,
         )
         .unwrap();
-        let config = load_config_from(&path).unwrap();
+        let config = load_mcp_config(Some(&path)).unwrap();
         let p = config.get_profile(None).unwrap();
         assert_eq!(p.client_id, "id");
     }
@@ -136,7 +138,7 @@ certificate = "cert.p12"
 "#,
         )
         .unwrap();
-        let config = load_config_from(&path).unwrap();
+        let config = load_mcp_config(Some(&path)).unwrap();
         let result = config.get_profile(Some("nonexistent"));
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -180,7 +182,7 @@ default_pix_key = "+5511999999999"
 "#,
         )
         .unwrap();
-        let config = load_config_from(&path).unwrap();
+        let config = load_mcp_config(Some(&path)).unwrap();
         assert_eq!(config.defaults.profile, "full");
         assert_eq!(config.defaults.output, "json");
         let p = config.profiles.get("full").unwrap();
@@ -193,7 +195,7 @@ default_pix_key = "+5511999999999"
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "").unwrap();
-        let config = load_config_from(&path).unwrap();
+        let config = PixConfig::load(Some(&path)).unwrap();
         assert_eq!(config.defaults.profile, "default");
         assert!(config.profiles.is_empty());
     }
@@ -222,7 +224,7 @@ default_pix_key = "key_b"
 "#,
         )
         .unwrap();
-        let config = load_config_from(&path).unwrap();
+        let config = load_mcp_config(Some(&path)).unwrap();
         assert_eq!(config.profiles.len(), 2);
         assert_eq!(config.profiles["a"].client_id, "a_id");
         assert_eq!(
@@ -232,36 +234,20 @@ default_pix_key = "key_b"
     }
 
     #[test]
-    fn test_default_path_with_env_var() {
-        std::env::set_var("PIXCLI_CONFIG", "/custom/mcp_config.toml");
-        let path = PixConfig::default_path();
-        std::env::remove_var("PIXCLI_CONFIG");
+    fn test_default_path_with_env_override() {
+        let path = PixConfig::default_path_from_env(Some("/custom/mcp_config.toml".to_string()));
         assert_eq!(path, std::path::PathBuf::from("/custom/mcp_config.toml"));
     }
 
     #[test]
-    fn test_default_path_without_env_var() {
-        std::env::remove_var("PIXCLI_CONFIG");
-        let path = PixConfig::default_path();
+    fn test_default_path_without_env_override() {
+        let path = PixConfig::default_path_from_env(None);
         assert!(path.to_string_lossy().ends_with("config.toml"));
         assert!(path.to_string_lossy().contains(".pixcli"));
     }
 
     #[test]
-    fn test_load_missing_config() {
-        std::env::set_var(
-            "PIXCLI_CONFIG",
-            "/tmp/absolutely-nonexistent-pixcli-mcp-config.toml",
-        );
-        let result = load_mcp_config();
-        std::env::remove_var("PIXCLI_CONFIG");
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Config file not found"));
-    }
-
-    #[test]
-    fn test_load_valid_config_via_env() {
+    fn test_load_valid_config() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(
@@ -276,20 +262,16 @@ certificate = "cert.p12"
 "#,
         )
         .unwrap();
-        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
-        let config = load_mcp_config().unwrap();
-        std::env::remove_var("PIXCLI_CONFIG");
+        let config = load_mcp_config(Some(&path)).unwrap();
         assert!(config.profiles.contains_key("test"));
     }
 
     #[test]
-    fn test_load_corrupt_config_via_env() {
+    fn test_load_corrupt_config() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "{{invalid toml}}").unwrap();
-        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
-        let result = load_mcp_config();
-        std::env::remove_var("PIXCLI_CONFIG");
+        let result = load_mcp_config(Some(&path));
         assert!(result.is_err());
     }
 }

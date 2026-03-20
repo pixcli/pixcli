@@ -93,18 +93,39 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Balance => {
-            commands::balance::run(cli.profile.as_deref(), cli.sandbox, cli.output).await
+            commands::balance::run(cli.profile.as_deref(), cli.sandbox, cli.output, None).await
         }
         Commands::Charge { action } => {
-            commands::charge::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
+            commands::charge::run(
+                action,
+                cli.profile.as_deref(),
+                cli.sandbox,
+                cli.output,
+                None,
+            )
+            .await
         }
         Commands::Pix { action } => {
-            commands::pix_cmd::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
+            commands::pix_cmd::run(
+                action,
+                cli.profile.as_deref(),
+                cli.sandbox,
+                cli.output,
+                None,
+            )
+            .await
         }
-        Commands::Config { action } => commands::config_cmd::run(action, cli.output),
+        Commands::Config { action } => commands::config_cmd::run(action, cli.output, None),
         Commands::Qr { action } => commands::qr::run(action, cli.output),
         Commands::Webhook { action } => {
-            commands::webhook::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
+            commands::webhook::run(
+                action,
+                cli.profile.as_deref(),
+                cli.sandbox,
+                cli.output,
+                None,
+            )
+            .await
         }
     }
 }

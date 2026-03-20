@@ -120,7 +120,16 @@ impl PixConfig {
     /// Checks `PIXCLI_CONFIG` env var first, then falls back to
     /// `~/.pixcli/config.toml`.
     pub fn default_path() -> PathBuf {
-        if let Ok(path) = std::env::var("PIXCLI_CONFIG") {
+        Self::default_path_from_env(std::env::var("PIXCLI_CONFIG").ok())
+    }
+
+    /// Returns the default config file path from an explicit override value.
+    ///
+    /// Use this instead of [`default_path`] in tests to avoid mutating
+    /// process-global environment variables (which is UB in multi-threaded
+    /// programs).
+    pub fn default_path_from_env(env_override: Option<String>) -> PathBuf {
+        if let Some(path) = env_override {
             return PathBuf::from(path);
         }
         let home = directories::BaseDirs::new()
@@ -172,6 +181,17 @@ impl PixConfig {
     /// - `PIXCLI_CERTIFICATE_PASSWORD`
     /// - `PIXCLI_PIX_KEY`
     pub fn apply_env_overrides(&mut self) {
+        let env: HashMap<String, String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("PIXCLI_"))
+            .collect();
+        self.apply_env_overrides_from(&env);
+    }
+
+    /// Applies overrides from an explicit map of environment variables.
+    ///
+    /// Use this instead of [`apply_env_overrides`] in tests to avoid
+    /// mutating process-global environment variables.
+    pub fn apply_env_overrides_from(&mut self, env: &HashMap<String, String>) {
         let profile_name = self.defaults.profile.clone();
         let profile = self
             .profiles
@@ -186,20 +206,20 @@ impl PixConfig {
                 default_pix_key: None,
             });
 
-        if let Ok(val) = std::env::var("PIXCLI_CLIENT_ID") {
-            profile.client_id = val;
+        if let Some(val) = env.get("PIXCLI_CLIENT_ID") {
+            profile.client_id = val.clone();
         }
-        if let Ok(val) = std::env::var("PIXCLI_CLIENT_SECRET") {
-            profile.client_secret = val;
+        if let Some(val) = env.get("PIXCLI_CLIENT_SECRET") {
+            profile.client_secret = val.clone();
         }
-        if let Ok(val) = std::env::var("PIXCLI_CERTIFICATE") {
-            profile.certificate = val;
+        if let Some(val) = env.get("PIXCLI_CERTIFICATE") {
+            profile.certificate = val.clone();
         }
-        if let Ok(val) = std::env::var("PIXCLI_CERTIFICATE_PASSWORD") {
-            profile.certificate_password = val;
+        if let Some(val) = env.get("PIXCLI_CERTIFICATE_PASSWORD") {
+            profile.certificate_password = val.clone();
         }
-        if let Ok(val) = std::env::var("PIXCLI_PIX_KEY") {
-            profile.default_pix_key = Some(val);
+        if let Some(val) = env.get("PIXCLI_PIX_KEY") {
+            profile.default_pix_key = Some(val.clone());
         }
 
         // Remove the profile if it's entirely empty (no env vars set).
