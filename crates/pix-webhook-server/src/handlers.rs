@@ -81,6 +81,9 @@ pub async fn handle_webhook(
                     if let Err(e) = file.write_all(line.as_bytes()).await {
                         error!("Failed to write to {path}: {e}");
                     }
+                    if let Err(e) = file.flush().await {
+                        error!("Failed to flush {path}: {e}");
+                    }
                 }
                 Err(e) => error!("Failed to open {path}: {e}"),
             }

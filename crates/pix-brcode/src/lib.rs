@@ -219,20 +219,20 @@ mod tests {
 
     #[test]
     fn test_builder_rejects_long_merchant_name() {
-        let result = BrCode::builder("key", &"A".repeat(26), "City").build();
+        let result = BrCode::builder("key", "A".repeat(26), "City").build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_builder_rejects_long_merchant_city() {
-        let result = BrCode::builder("key", "Name", &"B".repeat(16)).build();
+        let result = BrCode::builder("key", "Name", "B".repeat(16)).build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_builder_rejects_long_amount() {
         let result = BrCode::builder("key", "Name", "City")
-            .transaction_amount(&"9".repeat(14))
+            .transaction_amount("9".repeat(14))
             .build();
         assert!(result.is_err());
     }
@@ -240,16 +240,16 @@ mod tests {
     #[test]
     fn test_builder_rejects_long_txid() {
         let result = BrCode::builder("key", "Name", "City")
-            .txid(&"X".repeat(26))
+            .txid("X".repeat(26))
             .build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_builder_accepts_max_length_fields() {
-        let result = BrCode::builder("key", &"A".repeat(25), &"B".repeat(15))
-            .transaction_amount(&"9".repeat(13))
-            .txid(&"X".repeat(25))
+        let result = BrCode::builder("key", "A".repeat(25), "B".repeat(15))
+            .transaction_amount("9".repeat(13))
+            .txid("X".repeat(25))
             .build();
         assert!(result.is_ok());
     }

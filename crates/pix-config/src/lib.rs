@@ -126,7 +126,7 @@ impl PixConfig {
 
     /// Returns the default config file path from an explicit override value.
     ///
-    /// Use this instead of [`default_path`] in tests to avoid mutating
+    /// Use this instead of [`PixConfig::default_path`] in tests to avoid mutating
     /// process-global environment variables (which is UB in multi-threaded
     /// programs).
     pub fn default_path_from_env(env_override: Option<String>) -> PathBuf {
@@ -190,7 +190,7 @@ impl PixConfig {
 
     /// Applies overrides from an explicit map of environment variables.
     ///
-    /// Use this instead of [`apply_env_overrides`] in tests to avoid
+    /// Use this instead of [`PixConfig::apply_env_overrides`] in tests to avoid
     /// mutating process-global environment variables.
     pub fn apply_env_overrides_from(&mut self, env: &HashMap<String, String>) {
         let profile_name = self.defaults.profile.clone();
