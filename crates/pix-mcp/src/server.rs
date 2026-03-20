@@ -141,7 +141,6 @@ impl PixMcpServer {
 
     /// Creates a new MCP server from a dynamic provider (primarily for testing).
     #[cfg(test)]
-    #[cfg(test)]
     pub fn from_dyn(provider: Arc<dyn DynPixProvider>, default_pix_key: Option<String>) -> Self {
         Self {
             provider,
@@ -310,7 +309,7 @@ impl PixMcpServer {
             .unwrap_or_else(|| "PAGAMENTO PIX".to_string());
         let city_str = params.city.unwrap_or_else(|| "SAO PAULO".to_string());
 
-        let mut builder = BrCode::builder(&params.key, &name, &city_str).point_of_initiation("12");
+        let mut builder = BrCode::builder(&params.key, &name, &city_str).point_of_initiation("11");
 
         if let Some(amt) = params.amount {
             if amt <= 0.0 {

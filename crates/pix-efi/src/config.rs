@@ -43,6 +43,7 @@ pub struct EfiConfig {
     /// OAuth2 client ID.
     pub client_id: String,
     /// OAuth2 client secret.
+    #[serde(skip_serializing)]
     pub client_secret: String,
     /// Path to the PKCS#12 (.p12) certificate file for mTLS.
     pub certificate_path: PathBuf,
@@ -92,6 +93,8 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("test_id"));
         assert!(json.contains("sandbox"));
+        // client_secret should not appear in serialized output
+        assert!(!json.contains("test_secret"));
     }
 
     #[test]

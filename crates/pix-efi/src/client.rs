@@ -85,28 +85,6 @@ impl EfiClient {
         Ok(response)
     }
 
-    /// Makes an authenticated POST request to the Efí API.
-    #[allow(dead_code)]
-    async fn post<B: Serialize>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<reqwest::Response, EfiError> {
-        let token = self.auth.get_token().await?;
-        let url = format!("{}{path}", self.auth.base_url());
-
-        let response = self
-            .auth
-            .http_client()
-            .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {token}"))
-            .json(body)
-            .send()
-            .await?;
-
-        Ok(response)
-    }
-
     /// Makes an authenticated PUT request to the Efí API.
     async fn put<B: Serialize>(&self, path: &str, body: &B) -> Result<reqwest::Response, EfiError> {
         let token = self.auth.get_token().await?;
@@ -125,7 +103,14 @@ impl EfiClient {
     }
 
     /// Checks an HTTP response for errors and converts to `ProviderError`.
-    pub fn check_response(status: reqwest::StatusCode, body: &str) -> Result<(), ProviderError> {
+    ///
+    /// `retry_after` is an optional value extracted from the `Retry-After` header
+    /// by the caller. If `None` and the status is 429, falls back to 60 seconds.
+    pub fn check_response(
+        status: reqwest::StatusCode,
+        body: &str,
+        retry_after: Option<u64>,
+    ) -> Result<(), ProviderError> {
         if status.is_success() {
             return Ok(());
         }
@@ -139,7 +124,7 @@ impl EfiClient {
             ))),
             404 => Err(ProviderError::NotFound(body.to_string())),
             429 => Err(ProviderError::RateLimited {
-                retry_after_secs: 60,
+                retry_after_secs: retry_after.unwrap_or(60),
             }),
             _ => Err(ProviderError::Http {
                 status: code,
@@ -187,12 +172,17 @@ impl EfiClient {
             };
 
             let status = response.status();
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok());
             let body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "<no body>".to_string());
 
-            if let Err(e) = Self::check_response(status, &body) {
+            if let Err(e) = Self::check_response(status, &body, retry_after) {
                 if Self::is_retryable(&e) && attempt < 2 {
                     last_err = Some(e);
                     continue;
@@ -232,12 +222,17 @@ impl EfiClient {
             };
 
             let status = response.status();
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok());
             let resp_body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "<no body>".to_string());
 
-            if let Err(e) = Self::check_response(status, &resp_body) {
+            if let Err(e) = Self::check_response(status, &resp_body, retry_after) {
                 if Self::is_retryable(&e) && attempt < 2 {
                     last_err = Some(e);
                     continue;
@@ -309,11 +304,16 @@ impl EfiClient {
             pe
         })?;
         let status = response.status();
+        let retry_after = response
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
         let body = response
             .text()
             .await
             .unwrap_or_else(|_| "<no body>".to_string());
-        Self::check_response(status, &body)?;
+        Self::check_response(status, &body, retry_after)?;
         Ok(())
     }
 }
@@ -696,7 +696,7 @@ impl PixProvider for EfiClient {
             },
         };
 
-        let path = format!("/v3/gn/pix/{id_envio}");
+        let path = format!("/v2/gn/pix/{id_envio}");
         let (_status, response_body) = self.put_with_retry(&path, &body).await?;
 
         let efi_resp: EfiSendPixResponse = serde_json::from_str(&response_body).map_err(|e| {
@@ -722,7 +722,7 @@ impl PixProvider for EfiClient {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
         })?;
 
-        Ok(convert_pix_transaction(&efi_tx))
+        convert_pix_transaction(&efi_tx)
     }
 
     async fn list_received_pix(
@@ -746,7 +746,7 @@ impl PixProvider for EfiClient {
             ProviderError::InvalidResponse(format!("failed to parse response: {e}"))
         })?;
 
-        Ok(efi_resp.pix.iter().map(convert_pix_transaction).collect())
+        efi_resp.pix.iter().map(convert_pix_transaction).collect()
     }
 
     async fn get_balance(&self) -> Result<Balance, ProviderError> {
@@ -767,18 +767,19 @@ impl PixProvider for EfiClient {
 }
 
 /// Converts an Efí Pix transaction to the provider-level type.
-fn convert_pix_transaction(efi_tx: &EfiPixTransaction) -> PixTransaction {
+///
+/// Returns an error if the timestamp cannot be parsed.
+fn convert_pix_transaction(efi_tx: &EfiPixTransaction) -> Result<PixTransaction, ProviderError> {
     let timestamp = DateTime::parse_from_rfc3339(&efi_tx.horario)
         .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_else(|e| {
-            tracing::warn!(
-                "failed to parse timestamp '{}': {e}, using current time",
+        .map_err(|e| {
+            ProviderError::InvalidResponse(format!(
+                "failed to parse timestamp '{}': {e}",
                 efi_tx.horario
-            );
-            Utc::now()
-        });
+            ))
+        })?;
 
-    PixTransaction {
+    Ok(PixTransaction {
         e2eid: efi_tx.end_to_end_id.clone(),
         txid: efi_tx.txid.clone(),
         amount: efi_tx.valor.clone(),
@@ -789,7 +790,7 @@ fn convert_pix_transaction(efi_tx: &EfiPixTransaction) -> PixTransaction {
             .and_then(|p| p.cpf.clone().or_else(|| p.cnpj.clone())),
         description: efi_tx.info_pagador.clone(),
         timestamp,
-    }
+    })
 }
 
 /// Generates a random transaction ID (35 alphanumeric characters).
@@ -925,7 +926,7 @@ mod tests {
             }),
         };
 
-        let tx = convert_pix_transaction(&efi_tx);
+        let tx = convert_pix_transaction(&efi_tx).unwrap();
         assert_eq!(tx.e2eid, "E999");
         assert_eq!(tx.txid, Some("tx1".to_string()));
         assert_eq!(tx.amount, "42.00");
@@ -935,25 +936,27 @@ mod tests {
 
     #[test]
     fn test_check_response_success() {
-        assert!(EfiClient::check_response(reqwest::StatusCode::OK, "").is_ok());
-        assert!(EfiClient::check_response(reqwest::StatusCode::CREATED, "").is_ok());
+        assert!(EfiClient::check_response(reqwest::StatusCode::OK, "", None).is_ok());
+        assert!(EfiClient::check_response(reqwest::StatusCode::CREATED, "", None).is_ok());
     }
 
     #[test]
     fn test_check_response_auth_failure() {
-        let result = EfiClient::check_response(reqwest::StatusCode::UNAUTHORIZED, "bad token");
+        let result =
+            EfiClient::check_response(reqwest::StatusCode::UNAUTHORIZED, "bad token", None);
         assert!(matches!(result, Err(ProviderError::Authentication(_))));
     }
 
     #[test]
     fn test_check_response_not_found() {
-        let result = EfiClient::check_response(reqwest::StatusCode::NOT_FOUND, "not found");
+        let result = EfiClient::check_response(reqwest::StatusCode::NOT_FOUND, "not found", None);
         assert!(matches!(result, Err(ProviderError::NotFound(_))));
     }
 
     #[test]
     fn test_check_response_rate_limited() {
-        let result = EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "slow down");
+        let result =
+            EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "slow down", None);
         assert!(matches!(result, Err(ProviderError::RateLimited { .. })));
     }
 }
@@ -1027,22 +1030,23 @@ mod additional_client_tests {
 
     #[test]
     fn test_check_response_200() {
-        assert!(EfiClient::check_response(reqwest::StatusCode::OK, "body").is_ok());
+        assert!(EfiClient::check_response(reqwest::StatusCode::OK, "body", None).is_ok());
     }
 
     #[test]
     fn test_check_response_201() {
-        assert!(EfiClient::check_response(reqwest::StatusCode::CREATED, "").is_ok());
+        assert!(EfiClient::check_response(reqwest::StatusCode::CREATED, "", None).is_ok());
     }
 
     #[test]
     fn test_check_response_204() {
-        assert!(EfiClient::check_response(reqwest::StatusCode::NO_CONTENT, "").is_ok());
+        assert!(EfiClient::check_response(reqwest::StatusCode::NO_CONTENT, "", None).is_ok());
     }
 
     #[test]
     fn test_check_response_401() {
-        let err = EfiClient::check_response(reqwest::StatusCode::UNAUTHORIZED, "msg").unwrap_err();
+        let err =
+            EfiClient::check_response(reqwest::StatusCode::UNAUTHORIZED, "msg", None).unwrap_err();
         match err {
             ProviderError::Authentication(msg) => assert!(msg.contains("msg")),
             _ => panic!("unexpected error type"),
@@ -1051,7 +1055,8 @@ mod additional_client_tests {
 
     #[test]
     fn test_check_response_403() {
-        let err = EfiClient::check_response(reqwest::StatusCode::FORBIDDEN, "msg").unwrap_err();
+        let err =
+            EfiClient::check_response(reqwest::StatusCode::FORBIDDEN, "msg", None).unwrap_err();
         match err {
             ProviderError::Authentication(msg) => assert!(msg.contains("msg")),
             _ => panic!("unexpected error type"),
@@ -1060,8 +1065,8 @@ mod additional_client_tests {
 
     #[test]
     fn test_check_response_404() {
-        let err =
-            EfiClient::check_response(reqwest::StatusCode::NOT_FOUND, "not here").unwrap_err();
+        let err = EfiClient::check_response(reqwest::StatusCode::NOT_FOUND, "not here", None)
+            .unwrap_err();
         match err {
             ProviderError::NotFound(msg) => assert_eq!(msg, "not here"),
             _ => panic!("unexpected error type"),
@@ -1070,8 +1075,8 @@ mod additional_client_tests {
 
     #[test]
     fn test_check_response_429() {
-        let err =
-            EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "").unwrap_err();
+        let err = EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "", None)
+            .unwrap_err();
         match err {
             ProviderError::RateLimited { retry_after_secs } => assert_eq!(retry_after_secs, 60),
             _ => panic!("unexpected error type"),
@@ -1080,8 +1085,9 @@ mod additional_client_tests {
 
     #[test]
     fn test_check_response_500() {
-        let err = EfiClient::check_response(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "error")
-            .unwrap_err();
+        let err =
+            EfiClient::check_response(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "error", None)
+                .unwrap_err();
         match err {
             ProviderError::Http { status, message } => {
                 assert_eq!(status, 500);
@@ -1093,7 +1099,7 @@ mod additional_client_tests {
 
     #[test]
     fn test_check_response_503() {
-        let err = EfiClient::check_response(reqwest::StatusCode::SERVICE_UNAVAILABLE, "down")
+        let err = EfiClient::check_response(reqwest::StatusCode::SERVICE_UNAVAILABLE, "down", None)
             .unwrap_err();
         match err {
             ProviderError::Http { status, .. } => assert_eq!(status, 503),
@@ -1292,7 +1298,7 @@ mod additional_client_tests {
             info_pagador: None,
             pagador: None,
         };
-        let tx = convert_pix_transaction(&efi_tx);
+        let tx = convert_pix_transaction(&efi_tx).unwrap();
         assert_eq!(tx.e2eid, "E1");
         assert!(tx.txid.is_none());
         assert!(tx.payer_name.is_none());
@@ -1313,12 +1319,12 @@ mod additional_client_tests {
                 nome: Some("Empresa".to_string()),
             }),
         };
-        let tx = convert_pix_transaction(&efi_tx);
+        let tx = convert_pix_transaction(&efi_tx).unwrap();
         assert_eq!(tx.payer_document, Some("11222333000181".to_string()));
     }
 
     #[test]
-    fn test_convert_pix_transaction_bad_timestamp_uses_current() {
+    fn test_convert_pix_transaction_bad_timestamp_returns_error() {
         let efi_tx = EfiPixTransaction {
             end_to_end_id: "E1".to_string(),
             txid: None,
@@ -1327,9 +1333,14 @@ mod additional_client_tests {
             info_pagador: None,
             pagador: None,
         };
-        let tx = convert_pix_transaction(&efi_tx);
-        // Should not panic, uses Utc::now() fallback
-        assert!((Utc::now() - tx.timestamp).num_seconds().abs() < 5);
+        let result = convert_pix_transaction(&efi_tx);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ProviderError::InvalidResponse(msg) => {
+                assert!(msg.contains("failed to parse timestamp"));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
     }
 
     // --- WebhookInfo ---

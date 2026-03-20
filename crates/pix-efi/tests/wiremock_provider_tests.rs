@@ -718,7 +718,7 @@ async fn test_send_pix_success() {
     setup_token_mock(&server).await;
 
     Mock::given(method("PUT"))
-        .and(path_regex(r"/v3/gn/pix/.+"))
+        .and(path_regex(r"/v2/gn/pix/.+"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "idEnvio": "envio123",
             "e2eId": "E12345678901234567890123456789AB",
@@ -766,7 +766,7 @@ async fn test_send_pix_api_error() {
     setup_token_mock(&server).await;
 
     Mock::given(method("PUT"))
-        .and(path_regex(r"/v3/gn/pix/.+"))
+        .and(path_regex(r"/v2/gn/pix/.+"))
         .respond_with(ResponseTemplate::new(403).set_body_string("insufficient funds"))
         .mount(&server)
         .await;
@@ -1146,7 +1146,7 @@ async fn test_send_pix_invalid_json_response() {
     setup_token_mock(&server).await;
 
     Mock::given(method("PUT"))
-        .and(path_regex(r"/v3/gn/pix/.+"))
+        .and(path_regex(r"/v2/gn/pix/.+"))
         .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
         .mount(&server)
         .await;
@@ -1196,7 +1196,7 @@ async fn test_send_pix_without_description() {
     setup_token_mock(&server).await;
 
     Mock::given(method("PUT"))
-        .and(path_regex(r"/v3/gn/pix/.+"))
+        .and(path_regex(r"/v2/gn/pix/.+"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "idEnvio": "envio456",
             "e2eId": null,

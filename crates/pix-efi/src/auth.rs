@@ -17,19 +17,19 @@ use crate::EfiError;
 
 /// OAuth2 token response from Efí.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TokenResponse {
     access_token: String,
     token_type: String,
     expires_in: i64,
-    #[allow(dead_code)]
     scope: Option<String>,
 }
 
 /// A cached access token with its expiration time.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct CachedToken {
     access_token: String,
-    #[allow(dead_code)]
     token_type: String,
     expires_at: DateTime<Utc>,
 }

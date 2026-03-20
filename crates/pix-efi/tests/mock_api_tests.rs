@@ -106,36 +106,37 @@ mod response_check_tests {
 
     #[test]
     fn test_200_ok() {
-        assert!(EfiClient::check_response(StatusCode::OK, "").is_ok());
+        assert!(EfiClient::check_response(StatusCode::OK, "", None).is_ok());
     }
 
     #[test]
     fn test_201_created() {
-        assert!(EfiClient::check_response(StatusCode::CREATED, "").is_ok());
+        assert!(EfiClient::check_response(StatusCode::CREATED, "", None).is_ok());
     }
 
     #[test]
     fn test_401_unauthorized() {
-        let err = EfiClient::check_response(StatusCode::UNAUTHORIZED, "bad token").unwrap_err();
+        let err =
+            EfiClient::check_response(StatusCode::UNAUTHORIZED, "bad token", None).unwrap_err();
         assert!(matches!(err, ProviderError::Authentication(_)));
     }
 
     #[test]
     fn test_403_forbidden() {
-        let err = EfiClient::check_response(StatusCode::FORBIDDEN, "no scope").unwrap_err();
+        let err = EfiClient::check_response(StatusCode::FORBIDDEN, "no scope", None).unwrap_err();
         assert!(matches!(err, ProviderError::Authentication(_)));
     }
 
     #[test]
     fn test_404_not_found() {
-        let err = EfiClient::check_response(StatusCode::NOT_FOUND, "gone").unwrap_err();
+        let err = EfiClient::check_response(StatusCode::NOT_FOUND, "gone", None).unwrap_err();
         assert!(matches!(err, ProviderError::NotFound(_)));
     }
 
     #[test]
     fn test_429_rate_limited() {
-        let err =
-            EfiClient::check_response(StatusCode::TOO_MANY_REQUESTS, "slow down").unwrap_err();
+        let err = EfiClient::check_response(StatusCode::TOO_MANY_REQUESTS, "slow down", None)
+            .unwrap_err();
         match err {
             ProviderError::RateLimited { retry_after_secs } => {
                 assert_eq!(retry_after_secs, 60);
@@ -146,7 +147,8 @@ mod response_check_tests {
 
     #[test]
     fn test_500_server_error() {
-        let err = EfiClient::check_response(StatusCode::INTERNAL_SERVER_ERROR, "boom").unwrap_err();
+        let err =
+            EfiClient::check_response(StatusCode::INTERNAL_SERVER_ERROR, "boom", None).unwrap_err();
         match err {
             ProviderError::Http { status, message } => {
                 assert_eq!(status, 500);
@@ -158,8 +160,8 @@ mod response_check_tests {
 
     #[test]
     fn test_503_service_unavailable() {
-        let err =
-            EfiClient::check_response(StatusCode::SERVICE_UNAVAILABLE, "maintenance").unwrap_err();
+        let err = EfiClient::check_response(StatusCode::SERVICE_UNAVAILABLE, "maintenance", None)
+            .unwrap_err();
         match err {
             ProviderError::Http { status, .. } => assert_eq!(status, 503),
             _ => panic!("expected Http, got {err:?}"),
