@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
 description = "EMV BRCode encoder/decoder for Brazilian Pix QR codes"
+readme = "../../README.md"
 
 [dependencies]
 pix-core.workspace = true

@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
 description = "Efí (Gerencianet) Pix provider with OAuth2 + mTLS authentication"
+readme = "../../README.md"
 
 [dependencies]
 pix-core.workspace = true

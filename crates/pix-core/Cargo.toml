@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
 description = "Core types, validation, and CRC16 for Brazilian Pix payments"
+readme = "../../README.md"
 
 [dependencies]
 thiserror.workspace = true

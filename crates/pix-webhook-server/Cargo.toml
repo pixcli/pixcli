@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
 description = "Standalone webhook receiver for Pix payment notifications"
+readme = "../../README.md"
 
 [[bin]]
 name = "pix-webhook-server"
