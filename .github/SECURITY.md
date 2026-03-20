@@ -21,7 +21,8 @@ If you discover a security vulnerability, please report it responsibly.
 
 - **Acknowledgement**: within 48 hours
 - **Initial assessment**: within 1 week
-- **Fix or mitigation**: depends on severity, typically within 30 days
+- **Fix or mitigation**: depends on severity, typically within 90 days
+- **Public disclosure**: coordinated disclosure after 90 days
 
 We will credit reporters in the release notes (unless you prefer to remain anonymous).
 

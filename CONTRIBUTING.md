@@ -50,6 +50,7 @@ pixcli/
 ├── crates/
 │   ├── pix-core/             # Core types, validation, CRC16
 │   ├── pix-brcode/           # EMV/BR Code encoder & decoder
+│   ├── pix-config/           # Configuration, profiles, env overrides
 │   ├── pix-provider/         # PixProvider trait + shared types
 │   ├── pix-efi/              # Efí (Gerencianet) backend
 │   ├── pix-mcp/              # MCP server for AI agents

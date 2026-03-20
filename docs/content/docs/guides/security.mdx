@@ -66,6 +66,29 @@ For production webhook deployments:
 4. **Monitor** webhook delivery and response times
 5. **Set up alerts** for repeated delivery failures
 
+## HMAC Webhook Authentication
+
+When your PSP sends webhook notifications, you should verify their authenticity using HMAC signatures. The Efí provider signs webhook payloads with a shared secret, and `pix-webhook-server` can validate these signatures before processing:
+
+1. Configure your webhook secret in the PSP dashboard
+2. The PSP includes an HMAC-SHA256 signature in the request header
+3. The webhook server recomputes the signature and compares it to the provided value
+4. Requests with invalid or missing signatures are rejected with `401 Unauthorized`
+
+This prevents attackers from sending forged webhook events to your endpoint.
+
+## Compile-Time Safety: `deny(unsafe_code)`
+
+All library crates in the workspace use `#![deny(unsafe_code)]` at the crate root:
+
+- `pix-core`
+- `pix-brcode`
+- `pix-config`
+- `pix-provider`
+- `pix-efi`
+
+This ensures that no `unsafe` blocks can be introduced without an explicit lint override, keeping the codebase memory-safe by default.
+
 ## Input Validation
 
 Pixcli validates all inputs before processing:
