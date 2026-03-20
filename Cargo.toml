@@ -64,7 +64,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Web server (webhook)
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "limit"] }
 
 # MCP
 rmcp = { version = "1.2", features = ["server", "macros", "transport-io"] }
@@ -75,6 +75,8 @@ pix-core = { path = "crates/pix-core", version = "0.1.0" }
 pix-brcode = { path = "crates/pix-brcode", version = "0.1.0" }
 pix-provider = { path = "crates/pix-provider", version = "0.1.0" }
 pix-efi = { path = "crates/pix-efi", version = "0.1.0" }
+pix-config = { path = "crates/pix-config", version = "0.1.0" }
+pix-webhook-server = { path = "crates/pix-webhook-server", version = "0.1.0" }
 
 [package]
 name = "pixcli"
@@ -98,6 +100,8 @@ pix-core.workspace = true
 pix-brcode.workspace = true
 pix-provider.workspace = true
 pix-efi.workspace = true
+pix-config.workspace = true
+pix-webhook-server.workspace = true
 tokio.workspace = true
 clap.workspace = true
 serde.workspace = true

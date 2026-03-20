@@ -151,120 +151,35 @@ async fn remove(
 }
 
 /// Starts a local webhook listener server.
+///
+/// Reuses the handler from `pix-webhook-server` to avoid logic duplication.
 async fn listen(
     port: u16,
     forward_url: Option<String>,
     output_file: Option<String>,
     _format: OutputFormat,
 ) -> Result<()> {
-    use axum::extract::State;
-    use axum::http::StatusCode;
     use axum::routing::{get, post};
-    use axum::{Json, Router};
-    use serde::{Deserialize, Serialize};
+    use axum::Router;
+    use pix_webhook_server::AppState;
     use std::sync::Arc;
 
-    /// Shared state for the webhook listener.
-    struct ListenState {
-        forward_url: Option<String>,
-        output_file: Option<String>,
-        http_client: reqwest::Client,
-    }
-
-    /// Pix webhook event payload.
-    #[derive(Debug, Deserialize, Serialize)]
-    struct WebhookPayload {
-        pix: Vec<PixEvent>,
-    }
-
-    /// A single Pix event from a webhook notification.
-    #[derive(Debug, Deserialize, Serialize)]
-    struct PixEvent {
-        #[serde(rename = "endToEndId")]
-        end_to_end_id: String,
-        txid: Option<String>,
-        valor: String,
-        horario: String,
-        #[serde(rename = "infoPagador")]
-        info_pagador: Option<String>,
-        chave: Option<String>,
-        devolucoes: Option<Vec<serde_json::Value>>,
-    }
-
-    /// Handles incoming webhook POST requests.
-    async fn handle_webhook(
-        State(state): State<Arc<ListenState>>,
-        Json(payload): Json<WebhookPayload>,
-    ) -> StatusCode {
-        tracing::info!("Received webhook with {} event(s)", payload.pix.len());
-
-        for event in &payload.pix {
-            let event_json = match serde_json::to_string(event) {
-                Ok(j) => j,
-                Err(e) => {
-                    tracing::error!("Failed to serialize event: {e}");
-                    continue;
-                }
-            };
-
-            // Print to stdout
-            if let Ok(pretty) = serde_json::to_string_pretty(event) {
-                println!("{pretty}");
-            }
-
-            // Append to file
-            if let Some(ref path) = state.output_file {
-                use std::io::Write;
-                match std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                {
-                    Ok(mut file) => {
-                        if let Err(e) = writeln!(file, "{event_json}") {
-                            tracing::error!("Failed to write to {path}: {e}");
-                        }
-                    }
-                    Err(e) => tracing::error!("Failed to open {path}: {e}"),
-                }
-            }
-
-            // Forward to URL
-            if let Some(ref url) = state.forward_url {
-                let client = state.http_client.clone();
-                let url = url.clone();
-                let body = event_json.clone();
-                tokio::spawn(async move {
-                    match client
-                        .post(&url)
-                        .body(body)
-                        .header("Content-Type", "application/json")
-                        .send()
-                        .await
-                    {
-                        Ok(resp) => tracing::info!("Forwarded to {url}: {}", resp.status()),
-                        Err(e) => tracing::warn!("Failed to forward to {url}: {e}"),
-                    }
-                });
-            }
-        }
-
-        StatusCode::OK
-    }
-
-    let state = Arc::new(ListenState {
+    let state = Arc::new(AppState {
         forward_url,
         output_file,
+        quiet: false,
         http_client: reqwest::Client::new(),
+        api_key: None,
+        hmac_secret: None,
     });
 
     let app = Router::new()
-        .route("/pix", post(handle_webhook))
+        .route("/pix", post(pix_webhook_server::handlers::handle_webhook))
         .route("/health", get(|| async { "OK" }))
         .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");
-    println!("🔔 Webhook listener starting on {addr}");
+    println!("Webhook listener starting on {addr}");
     println!("   Endpoint: POST http://{addr}/pix");
     println!("   Health:   GET  http://{addr}/health");
     println!("   Press Ctrl+C to stop");

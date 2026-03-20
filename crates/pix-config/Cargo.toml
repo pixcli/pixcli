@@ -1,0 +1,22 @@
+[package]
+name = "pix-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
+description = "Shared configuration types for the Pix CLI and MCP server"
+readme = "../../README.md"
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+directories.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
