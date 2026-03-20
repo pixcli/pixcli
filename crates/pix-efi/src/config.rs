@@ -6,6 +6,7 @@ use std::path::PathBuf;
 /// The environment to connect to (production or sandbox).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum EfiEnvironment {
     /// Production environment.
     Production,
@@ -15,6 +16,7 @@ pub enum EfiEnvironment {
 
 impl EfiEnvironment {
     /// Returns the base URL for the Pix API in this environment.
+    #[must_use]
     pub fn base_url(&self) -> &str {
         match self {
             EfiEnvironment::Production => "https://pix.api.efipay.com.br",
@@ -23,6 +25,7 @@ impl EfiEnvironment {
     }
 
     /// Returns the OAuth2 token endpoint URL.
+    #[must_use]
     pub fn token_url(&self) -> String {
         format!("{}/oauth/token", self.base_url())
     }

@@ -66,6 +66,7 @@ pub struct ChargeResponse {
 /// Status of a Pix charge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[non_exhaustive]
 pub enum ChargeStatus {
     /// Charge is active and can be paid.
     Active,

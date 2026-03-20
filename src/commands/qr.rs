@@ -92,7 +92,7 @@ fn generate_qr(
     let mut builder = BrCode::builder(key, name, city).point_of_initiation("11");
 
     if let Some(amt) = amount {
-        builder = builder.transaction_amount(&format!("{amt:.2}"));
+        builder = builder.transaction_amount(format!("{amt:.2}"));
     }
 
     if let Some(desc) = description {

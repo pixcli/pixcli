@@ -1,5 +1,13 @@
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/pix-core",
+    "crates/pix-brcode",
+    "crates/pix-config",
+    "crates/pix-provider",
+    "crates/pix-efi",
+    "crates/pix-mcp",
+    "crates/pix-webhook-server",
+]
 resolver = "2"
 
 [workspace.package]

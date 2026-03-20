@@ -26,6 +26,7 @@ impl TlvEntry {
     /// Encodes this entry as a TLV string: `TTLLVVVV...`
     ///
     /// Where TT is the 2-digit tag, LL is the 2-digit length, and VVV... is the value.
+    #[must_use]
     pub fn encode(&self) -> String {
         format!("{}{:02}{}", self.tag, self.value.len(), self.value)
     }
@@ -43,34 +44,38 @@ impl TlvEntry {
 /// Returns `BrCodeError::MalformedTlv` if the input is not valid TLV data.
 pub fn parse_tlv(input: &str) -> Result<Vec<TlvEntry>, BrCodeError> {
     let mut entries = Vec::new();
-    let chars: Vec<char> = input.chars().collect();
+    let bytes = input.as_bytes();
     let mut pos = 0;
 
-    while pos < chars.len() {
-        // Need at least 4 characters for tag (2) + length (2)
-        if pos + 4 > chars.len() {
+    while pos < bytes.len() {
+        // Need at least 4 bytes for tag (2) + length (2)
+        if pos + 4 > bytes.len() {
             return Err(BrCodeError::MalformedTlv(format!(
                 "unexpected end of data at position {pos}"
             )));
         }
 
-        let tag: String = chars[pos..pos + 2].iter().collect();
-        let len_str: String = chars[pos + 2..pos + 4].iter().collect();
+        // SAFETY: EMV TLV payloads are ASCII; slicing is safe at byte boundaries.
+        let tag = &input[pos..pos + 2];
+        let len_str = &input[pos + 2..pos + 4];
         let len: usize = len_str.parse().map_err(|_| {
             BrCodeError::MalformedTlv(format!("invalid length '{len_str}' at position {pos}"))
         })?;
 
         pos += 4;
 
-        if pos + len > chars.len() {
+        if pos + len > bytes.len() {
             return Err(BrCodeError::MalformedTlv(format!(
                 "value extends past end of data: tag {tag}, expected {len} chars at position {pos}, but only {} remain",
-                chars.len() - pos
+                bytes.len() - pos
             )));
         }
 
-        let value: String = chars[pos..pos + len].iter().collect();
-        entries.push(TlvEntry::new(&tag, &value));
+        let value = &input[pos..pos + len];
+        entries.push(TlvEntry {
+            tag: tag.to_string(),
+            value: value.to_string(),
+        });
         pos += len;
     }
 
@@ -78,6 +83,7 @@ pub fn parse_tlv(input: &str) -> Result<Vec<TlvEntry>, BrCodeError> {
 }
 
 /// Finds the first TLV entry with the given tag.
+#[must_use]
 pub fn find_tag<'a>(entries: &'a [TlvEntry], tag: &str) -> Option<&'a TlvEntry> {
     entries.iter().find(|e| e.tag == tag)
 }

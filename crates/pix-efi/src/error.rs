@@ -5,6 +5,7 @@ use thiserror::Error;
 
 /// Errors specific to the Efí provider.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum EfiError {
     /// OAuth2 token request failed.
     #[error("OAuth2 token error: {0}")]

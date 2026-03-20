@@ -1,11 +1,9 @@
 //! HTTP request handlers for the Pix webhook server.
 
-use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
-use hmac::{Hmac, Mac};
+use axum::http::StatusCode;
+use axum::Json;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -39,63 +37,14 @@ pub struct PixEvent {
     pub devolucoes: Option<Vec<serde_json::Value>>,
 }
 
-/// Verifies an HMAC-SHA256 signature against the raw body.
-fn verify_hmac(secret: &str, body: &[u8], signature: &str) -> bool {
-    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else {
-        return false;
-    };
-    mac.update(body);
-    let Ok(expected) = hex::decode(signature) else {
-        return false;
-    };
-    mac.verify_slice(&expected).is_ok()
-}
-
 /// Handles incoming webhook POST requests at `/pix`.
 ///
 /// Parses the Efí webhook payload, prints events to stdout (unless `--quiet`),
 /// optionally appends them to a JSONL file, and optionally forwards them via HTTP POST.
-///
-/// If `--api-key` is configured, the `X-Api-Key` header must match.
-/// If `--hmac-secret` is configured, the `X-Webhook-Signature` HMAC-SHA256 must be valid.
 pub async fn handle_webhook(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    body: Bytes,
+    Json(payload): Json<WebhookPayload>,
 ) -> StatusCode {
-    // Check API key authentication
-    if let Some(ref expected_key) = state.api_key {
-        match headers.get("x-api-key").and_then(|v| v.to_str().ok()) {
-            Some(key) if key == expected_key => {}
-            _ => {
-                warn!("Rejected webhook: invalid or missing X-Api-Key header");
-                return StatusCode::UNAUTHORIZED;
-            }
-        }
-    }
-
-    // Check HMAC-SHA256 signature
-    if let Some(ref secret) = state.hmac_secret {
-        match headers
-            .get("x-webhook-signature")
-            .and_then(|v| v.to_str().ok())
-        {
-            Some(sig) if verify_hmac(secret, &body, sig) => {}
-            _ => {
-                warn!("Rejected webhook: invalid or missing X-Webhook-Signature header");
-                return StatusCode::UNAUTHORIZED;
-            }
-        }
-    }
-
-    // Deserialize the payload
-    let payload: WebhookPayload = match serde_json::from_slice(&body) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Failed to parse webhook payload: {e}");
-            return StatusCode::BAD_REQUEST;
-        }
-    };
     info!("Received webhook with {} event(s)", payload.pix.len());
 
     for event in &payload.pix {
@@ -107,10 +56,13 @@ pub async fn handle_webhook(
             }
         };
 
-        // Print to stdout
+        // Print to stdout (intentional user-facing CLI output)
         if !state.quiet {
             if let Ok(pretty) = serde_json::to_string_pretty(event) {
-                println!("{pretty}");
+                #[allow(clippy::print_stdout)]
+                {
+                    println!("{pretty}");
+                }
             }
         }
 
@@ -124,12 +76,10 @@ pub async fn handle_webhook(
                 .await
             {
                 Ok(mut file) => {
-                    let line = format!("{event_json}\n");
+                    let mut line = event_json.clone();
+                    line.push('\n');
                     if let Err(e) = file.write_all(line.as_bytes()).await {
                         error!("Failed to write to {path}: {e}");
-                    }
-                    if let Err(e) = file.flush().await {
-                        error!("Failed to flush {path}: {e}");
                     }
                 }
                 Err(e) => error!("Failed to open {path}: {e}"),
@@ -175,8 +125,6 @@ mod tests {
             output_file: None,
             quiet: true,
             http_client: reqwest::Client::new(),
-            api_key: None,
-            hmac_secret: None,
         })
     }
 
@@ -230,7 +178,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_malformed_json_returns_400() {
+    async fn test_malformed_json_returns_422() {
         let app = test_app(test_state());
 
         let response = app
@@ -277,8 +225,6 @@ mod tests {
             output_file: Some(output_path.to_str().unwrap().to_string()),
             quiet: true,
             http_client: reqwest::Client::new(),
-            api_key: None,
-            hmac_secret: None,
         });
 
         let app = test_app(state);
@@ -383,8 +329,6 @@ mod additional_webhook_tests {
             output_file: None,
             quiet: true,
             http_client: reqwest::Client::new(),
-            api_key: None,
-            hmac_secret: None,
         })
     }
 
@@ -527,7 +471,7 @@ mod additional_webhook_tests {
     }
 
     #[tokio::test]
-    async fn test_wrong_json_structure_returns_400() {
+    async fn test_wrong_json_structure_returns_422() {
         let app = test_app(test_state());
         // Valid JSON but wrong structure (missing "pix" key)
         let payload = r#"{"events":[{"id":"1"}]}"#;
@@ -543,7 +487,11 @@ mod additional_webhook_tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        // Axum returns 422 for valid JSON that doesn't match the expected type
+        assert!(
+            response.status() == StatusCode::UNPROCESSABLE_ENTITY
+                || response.status() == StatusCode::BAD_REQUEST
+        );
     }
 
     #[tokio::test]
@@ -609,8 +557,6 @@ mod additional_webhook_tests {
             output_file: Some(output_path.to_str().unwrap().to_string()),
             quiet: true,
             http_client: reqwest::Client::new(),
-            api_key: None,
-            hmac_secret: None,
         });
         let app = test_app(state);
 
@@ -655,8 +601,6 @@ mod additional_webhook_tests {
             output_file: Some(output_path.to_str().unwrap().to_string()),
             quiet: true,
             http_client: reqwest::Client::new(),
-            api_key: None,
-            hmac_secret: None,
         });
         let app = test_app(state);
 

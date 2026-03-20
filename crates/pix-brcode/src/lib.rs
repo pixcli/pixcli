@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! EMV BRCode encoder and decoder for Brazilian Pix QR codes.
 //!
 //! Implements the EMV TLV (Tag-Length-Value) format used by the Brazilian Central Bank
@@ -46,11 +47,16 @@ pub struct BrCode {
 
 impl BrCode {
     /// Creates a new `BrCode` builder with required fields.
-    pub fn builder(pix_key: &str, merchant_name: &str, merchant_city: &str) -> BrCodeBuilder {
+    #[must_use]
+    pub fn builder(
+        pix_key: impl Into<String>,
+        merchant_name: impl Into<String>,
+        merchant_city: impl Into<String>,
+    ) -> BrCodeBuilder {
         BrCodeBuilder {
-            pix_key: pix_key.to_string(),
-            merchant_name: merchant_name.to_string(),
-            merchant_city: merchant_city.to_string(),
+            pix_key: pix_key.into(),
+            merchant_name: merchant_name.into(),
+            merchant_city: merchant_city.into(),
             point_of_initiation: None,
             merchant_category_code: "0000".to_string(),
             transaction_amount: None,
@@ -78,32 +84,37 @@ impl BrCodeBuilder {
     ///
     /// - `"11"` for static (reusable) QR codes
     /// - `"12"` for dynamic (one-time) QR codes
-    pub fn point_of_initiation(mut self, method: &str) -> Self {
-        self.point_of_initiation = Some(method.to_string());
+    #[must_use]
+    pub fn point_of_initiation(mut self, method: impl Into<String>) -> Self {
+        self.point_of_initiation = Some(method.into());
         self
     }
 
     /// Sets the merchant category code (MCC).
-    pub fn merchant_category_code(mut self, mcc: &str) -> Self {
-        self.merchant_category_code = mcc.to_string();
+    #[must_use]
+    pub fn merchant_category_code(mut self, mcc: impl Into<String>) -> Self {
+        self.merchant_category_code = mcc.into();
         self
     }
 
     /// Sets the transaction amount.
-    pub fn transaction_amount(mut self, amount: &str) -> Self {
-        self.transaction_amount = Some(amount.to_string());
+    #[must_use]
+    pub fn transaction_amount(mut self, amount: impl Into<String>) -> Self {
+        self.transaction_amount = Some(amount.into());
         self
     }
 
     /// Sets the description text (included in merchant account info, sub-tag 02).
-    pub fn description(mut self, description: &str) -> Self {
-        self.description = Some(description.to_string());
+    #[must_use]
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
         self
     }
 
     /// Sets the transaction ID (txid).
-    pub fn txid(mut self, txid: &str) -> Self {
-        self.txid = Some(txid.to_string());
+    #[must_use]
+    pub fn txid(mut self, txid: impl Into<String>) -> Self {
+        self.txid = Some(txid.into());
         self
     }
 

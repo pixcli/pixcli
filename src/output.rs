@@ -216,6 +216,7 @@ fn format_status(status: ChargeStatus) -> String {
         ChargeStatus::RemovedByUser => "REMOVED_BY_USER".red().to_string(),
         ChargeStatus::RemovedByPsp => "REMOVED_BY_PSP".red().to_string(),
         ChargeStatus::Expired => "EXPIRED".dimmed().to_string(),
+        _ => "UNKNOWN".dimmed().to_string(),
     }
 }
 

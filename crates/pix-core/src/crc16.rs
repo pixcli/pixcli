@@ -19,6 +19,7 @@
 /// let crc = crc16_ccitt(b"123456789");
 /// assert_eq!(crc, 0x29B1);
 /// ```
+#[must_use]
 pub fn crc16_ccitt(data: &[u8]) -> u16 {
     let mut crc: u16 = 0xFFFF;
 
@@ -46,6 +47,7 @@ pub fn crc16_ccitt(data: &[u8]) -> u16 {
 /// let hex = crc16_ccitt_hex(b"123456789");
 /// assert_eq!(hex, "29B1");
 /// ```
+#[must_use]
 pub fn crc16_ccitt_hex(data: &[u8]) -> String {
     format!("{:04X}", crc16_ccitt(data))
 }
@@ -65,6 +67,7 @@ pub fn crc16_ccitt_hex(data: &[u8]) -> String {
 /// payload.push_str(&crc);
 /// assert!(validate_crc(&payload));
 /// ```
+#[must_use]
 pub fn validate_crc(payload: &str) -> bool {
     if payload.len() < 8 {
         return false;

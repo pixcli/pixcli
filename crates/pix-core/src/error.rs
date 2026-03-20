@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Top-level error type for all Pix operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PixError {
     /// Invalid Pix key format or check digit.
     #[error("invalid pix key: {0}")]

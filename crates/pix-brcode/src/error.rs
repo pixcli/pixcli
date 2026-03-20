@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors that can occur during BRCode encoding or decoding.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BrCodeError {
     /// A field exceeds the maximum allowed length.
     #[error("field '{field}' is too long: max {max}, got {actual}")]

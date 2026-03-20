@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors that can occur during Pix provider operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ProviderError {
     /// Authentication failed (invalid credentials, expired token, etc.).
     #[error("authentication error: {0}")]

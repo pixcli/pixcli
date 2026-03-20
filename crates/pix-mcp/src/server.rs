@@ -227,7 +227,7 @@ impl PixMcpServer {
         &self,
         Parameters(params): Parameters<ListTransactionsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let days = params.days.unwrap_or(7);
+        let days = params.days.unwrap_or(7).min(90);
         let now = Utc::now();
         let start = now - Duration::days(i64::from(days));
 
@@ -309,13 +309,13 @@ impl PixMcpServer {
             .unwrap_or_else(|| "PAGAMENTO PIX".to_string());
         let city_str = params.city.unwrap_or_else(|| "SAO PAULO".to_string());
 
-        let mut builder = BrCode::builder(&params.key, &name, &city_str).point_of_initiation("11");
+        let mut builder = BrCode::builder(&params.key, &name, &city_str).point_of_initiation("12");
 
         if let Some(amt) = params.amount {
             if amt <= 0.0 {
                 return error_result("Amount must be positive");
             }
-            builder = builder.transaction_amount(&format!("{:.2}", amt));
+            builder = builder.transaction_amount(format!("{:.2}", amt));
         }
 
         let brcode = builder.build().map_err(|e| {

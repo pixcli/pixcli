@@ -63,8 +63,9 @@ const PIX_GUI: &str = "BR.GOV.BCB.PIX";
 /// assert!(payload.starts_with("0002"));
 /// assert!(payload.len() > 50);
 /// ```
+#[must_use]
 pub fn encode_brcode(brcode: &BrCode) -> String {
-    let mut payload = String::new();
+    let mut payload = String::with_capacity(256);
 
     // 00 - Payload Format Indicator (always "01")
     payload.push_str(&TlvEntry::new(tags::PAYLOAD_FORMAT_INDICATOR, "01").encode());
