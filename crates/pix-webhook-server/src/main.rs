@@ -6,10 +6,9 @@
 use axum::routing::{get, post};
 use axum::Router;
 use clap::Parser;
+use pix_webhook_server::AppState;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
-
-mod handlers;
 
 /// Standalone Pix webhook receiver.
 #[derive(Parser)]
@@ -33,18 +32,12 @@ struct Args {
     /// Suppress stdout output of events.
     #[arg(long)]
     quiet: bool,
-}
-
-/// Shared application state accessible from request handlers.
-pub struct AppState {
-    /// URL to forward events to, if configured.
-    pub forward_url: Option<String>,
-    /// File path to append events to, if configured.
-    pub output_file: Option<String>,
-    /// Whether to suppress stdout output.
-    pub quiet: bool,
-    /// HTTP client for forwarding events.
-    pub http_client: reqwest::Client,
+    /// Optional API key for webhook authentication (checked via X-Api-Key header).
+    #[arg(long)]
+    api_key: Option<String>,
+    /// Optional HMAC-SHA256 secret for webhook signature verification (checked via X-Webhook-Signature header).
+    #[arg(long)]
+    hmac_secret: Option<String>,
 }
 
 #[tokio::main]
@@ -60,11 +53,14 @@ async fn main() -> anyhow::Result<()> {
         output_file: args.output_file.clone(),
         quiet: args.quiet,
         http_client: reqwest::Client::new(),
+        api_key: args.api_key.clone(),
+        hmac_secret: args.hmac_secret.clone(),
     });
 
     let app = Router::new()
-        .route("/pix", post(handlers::handle_webhook))
+        .route("/pix", post(pix_webhook_server::handlers::handle_webhook))
         .route("/health", get(|| async { "OK" }))
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(1024 * 1024))
         .with_state(state);
 
     let addr = format!("{}:{}", args.bind, args.port);
