@@ -1,4 +1,4 @@
-# 🏦 Pixcli
+# 🏦 pixcli
 
 **Make Pix payments from your terminal. Built for developers and AI agents.**
 
