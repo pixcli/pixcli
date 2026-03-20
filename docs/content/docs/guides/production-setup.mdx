@@ -1,0 +1,224 @@
+---
+title: Production Setup
+description: Deploy Pixcli to production safely and securely
+---
+
+## Obtaining Production Credentials
+
+Once you've tested in sandbox and are ready for production:
+
+1. Log into [efipay.com.br](https://efipay.com.br) with your real account
+2. Complete KYC (Know Your Customer) verification
+3. Request a production certificate from Efí support
+4. Efí will issue a P12 certificate signed by their production CA
+
+## Installing the Production Certificate
+
+1. Receive the P12 certificate from Efí
+2. Save to a secure location with restricted permissions:
+
+```bash
+cp your-production-cert.p12 ~/.pixcli/certs/production.p12
+chmod 600 ~/.pixcli/certs/production.p12
+```
+
+3. Note the certificate password (usually provided separately)
+
+## Configuration
+
+Create a separate production profile:
+
+```bash
+pixcli config init --profile production
+```
+
+Or manually add to `~/.pixcli/config.toml`:
+
+```toml
+[profiles.production]
+backend = "efi"
+environment = "production"
+client_id = "your_production_client_id"
+client_secret = "your_production_client_secret"
+certificate = "/home/pixcli/.pixcli/certs/production.p12"
+certificate_password = "your_cert_password"
+pix_key = "+5511999999999"
+```
+
+Test the connection:
+
+```bash
+pixcli --profile production balance
+```
+
+## Security Practices
+
+### Certificate Storage
+
+- Store certificates outside the application code
+- Use file permissions to restrict access: `chmod 600`
+- Never commit certificates to Git
+- Use environment variables or secrets management for production:
+
+```bash
+export PIXCLI_CERTIFICATE=/secure/path/production.p12
+export PIXCLI_CERTIFICATE_PASSWORD="secret-password"
+pixcli --profile production balance
+```
+
+### Secret Management
+
+For deployed services, use:
+
+- **Kubernetes Secrets** — for Kubernetes deployments
+- **AWS Secrets Manager** — for AWS
+- **HashiCorp Vault** — for general-purpose secret storage
+- **1Password / LastPass** — for team credentials
+
+Example with Docker secrets:
+
+```bash
+docker secret create pixcli_cert /path/to/cert.p12
+docker run --secret pixcli_cert \
+  -e PIXCLI_CERTIFICATE=/run/secrets/pixcli_cert \
+  pixcli-app
+```
+
+### Webhook mTLS
+
+In production, register webhooks with your actual HTTPS endpoint:
+
+```bash
+pixcli --profile production webhook register \
+  --key "+5511999999999" \
+  --url "https://webhook.example.com"
+```
+
+Configure your reverse proxy (nginx, Caddy) to require mTLS with Efí's CA certificate.
+
+See [Webhook Deployment](/docs/webhooks/deployment) for detailed nginx configuration.
+
+### API Rate Limits
+
+Efí enforces rate limits. Implement exponential backoff:
+
+```rust
+// Pseudo-code
+for attempt in 0..3 {
+    match client.create_charge(request).await {
+        Ok(charge) => return Ok(charge),
+        Err(ProviderError::Api { status: 429, .. }) => {
+            let delay = 2u64.pow(attempt);
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+        }
+        Err(e) => return Err(e),
+    }
+}
+```
+
+## Monitoring
+
+### Logging
+
+Enable debug logging for troubleshooting:
+
+```bash
+RUST_LOG=debug pixcli --profile production balance 2>&1 | tee pixcli.log
+```
+
+Useful log fields:
+- `auth_token=...` — OAuth2 token acquisition
+- `http_request=GET /api/...` — API calls
+- `certificate_loaded=...` — mTLS certificate status
+
+### Metrics
+
+For production systems, emit metrics:
+
+- Requests per second (RPS)
+- Error rates (4xx, 5xx)
+- Latency (p50, p99)
+- Charge creation success rate
+- Webhook delivery rate
+
+Use tools like Prometheus, CloudWatch, or Datadog.
+
+### Alerts
+
+Set up alerts for:
+
+- Certificate expiry (< 30 days)
+- Failed authentication (401)
+- High error rates (> 5%)
+- Webhook failures
+
+## Backup & Disaster Recovery
+
+### Config Backup
+
+Regularly backup your configuration (without secrets):
+
+```bash
+# Backup (redact secrets first)
+cp ~/.pixcli/config.toml config.backup.toml
+
+# Verify no secrets in backup
+grep -i "secret\|password" config.backup.toml  # Should be empty
+```
+
+### State Tracking
+
+Pixcli is stateless — no database required. However, track:
+
+- Recent charges (query API periodically)
+- Webhook events (save to JSONL)
+- Transaction logs (audit trail)
+
+### Recovery Procedure
+
+If your system goes down:
+
+1. Restore configuration from backup
+2. Query charges from the last 24 hours: `pixcli charge list --days 1`
+3. Reconcile with your records
+4. Replay any missed webhook events from Efí logs
+
+## Performance Tuning
+
+### Connection Pooling
+
+The `pix-efi` client reuses HTTP connections automatically via `reqwest`. Tune with:
+
+```rust
+let client = EfiClient::new(config)?;
+// Connections are pooled by default
+```
+
+### Token Caching
+
+OAuth2 tokens are cached and reused until expiry (usually 10 minutes). No tuning needed.
+
+### Bulk Operations
+
+For high-volume operations, batch requests:
+
+```rust
+// Good: batched
+let charges = vec![...1000 charges...];
+for chunk in charges.chunks(10) {
+    for request in chunk {
+        client.create_charge(request).await?;
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+// Bad: no backpressure
+for request in charges {
+    client.create_charge(request).await?;
+}
+```
+
+## Next Steps
+
+- [Troubleshooting](/docs/guides/troubleshooting) for common issues
+- [Webhook Deployment](/docs/webhooks/deployment) for production webhooks
