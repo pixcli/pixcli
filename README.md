@@ -16,8 +16,7 @@
 - 🔍 **QR code decoding** — parse any Pix EMV/BR Code payload
 - 🤖 **MCP server** for AI agent integration (Claude Code, OpenClaw, etc.)
 - 🔔 **Webhook receiver** for real-time payment notifications
-- 🔒 **Encrypted credential storage** with file-level permissions
-- 📋 **Audit logging** for compliance and debugging
+- 🔒 **File-level permission protection** — config stored with `0600` (owner-only) permissions
 - 📊 **Multiple output formats** — human-readable, JSON, and table
 
 ## Quick Start
@@ -259,11 +258,11 @@ Want to add a new PSP? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
 
-- **Credential storage**: Config file is created with `600` permissions (owner read/write only)
+- **Credential storage**: Config file is created with `600` permissions (owner read/write only). Credentials are stored in plaintext — no encryption at rest
 - **mTLS authentication**: PKCS#12 certificates for secure API communication
-- **Audit logging**: All operations are logged for compliance
 - **No plaintext secrets in logs**: Sensitive values are always redacted in output
 - **Sandbox mode**: Test safely without touching real money
+- **Webhook server**: For production use, deploy behind a reverse proxy with mTLS termination
 
 ## Architecture
 
