@@ -18,7 +18,6 @@ pub async fn run(profile: Option<&str>, sandbox: bool, format: OutputFormat) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     fn setup_config(content: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
