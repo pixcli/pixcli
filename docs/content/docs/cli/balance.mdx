@@ -1,0 +1,87 @@
+---
+title: pixcli balance
+description: Query your Pix account balance
+---
+
+## Usage
+
+```bash
+pixcli balance
+```
+
+Shows the available balance for your configured PSP account.
+
+## Examples
+
+### Human output (default)
+
+```bash
+pixcli balance
+```
+
+```
+💰 Account Balance
+   Available: R$1,250.00
+```
+
+### JSON output
+
+```bash
+pixcli balance --output json
+```
+
+```json
+{
+  "available": "1250.00"
+}
+```
+
+### Table output
+
+```bash
+pixcli balance --output table
+```
+
+```
+┌───────────┬────────────┐
+│ Field     │ Value      │
+├───────────┼────────────┤
+│ Available │ R$1,250.00 │
+└───────────┴────────────┘
+```
+
+### With a specific profile
+
+```bash
+pixcli --profile production balance
+```
+
+### Sandbox mode
+
+```bash
+pixcli --sandbox balance
+```
+
+## Error Scenarios
+
+### No configuration
+
+```
+Error: No configuration found. Run `pixcli config init` first.
+```
+
+### Invalid credentials
+
+```
+Error: Authentication failed (401 Unauthorized). Check your client_id and client_secret.
+```
+
+### Network error
+
+```
+Error: Connection refused. Verify your internet connection and the PSP endpoint.
+```
+
+<Callout type="info">
+Use `--verbose` to see detailed request/response logs for debugging.
+</Callout>

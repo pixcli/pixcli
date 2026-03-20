@@ -1,0 +1,112 @@
+---
+title: pixcli qr
+description: Generate and decode Pix QR codes
+---
+
+## Commands
+
+### `pixcli qr generate`
+
+Generate a static Pix QR code. This works entirely offline — no API credentials needed.
+
+```bash
+pixcli qr generate --key "+5511999999999" --amount 25.00
+```
+
+The QR code is rendered directly in your terminal using Unicode block characters.
+
+#### Flags
+
+| Flag | Short | Required | Default | Description |
+|------|-------|----------|---------|-------------|
+| `--key` | — | Yes | — | Pix key (CPF, CNPJ, email, phone, or EVP) |
+| `--amount` | — | No | — | Amount in BRL |
+| `--name` | — | No | `PIX` | Merchant/receiver name (max 25 chars) |
+| `--city` | — | No | `BRASILIA` | Merchant city (max 15 chars) |
+| `--description` | — | No | — | Description text |
+| `--txid` | — | No | — | Transaction ID |
+| `--output` | `-f` | No | — | Save QR as PNG to this file path |
+| `--size` | — | No | `10` | QR module size in pixels (PNG only) |
+
+#### Full example with all options
+
+```bash
+pixcli qr generate \
+  --key "+5511999999999" \
+  --amount 42.50 \
+  --name "CAFE DO PEDRO" \
+  --city "RIO DE JANEIRO" \
+  --description "Café e pão de queijo" \
+  --txid "pedido123" \
+  --output pagamento.png \
+  --size 15
+```
+
+#### Open-value QR code (no amount)
+
+```bash
+pixcli qr generate --key "email@example.com"
+```
+
+The payer can enter any amount when scanning.
+
+#### Generate and pipe BR Code
+
+```bash
+pixcli qr generate --key "+5511999999999" --amount 10.00 --output json 2>/dev/null
+```
+
+Useful for embedding the BR Code payload in other systems.
+
+---
+
+### `pixcli qr decode`
+
+Decode a Pix EMV/BR Code payload to see its contents.
+
+```bash
+pixcli qr decode "00020126580014br.gov.bcb.pix0136+5511999999999..."
+```
+
+**Output:**
+
+```json
+{
+  "format": "01",
+  "key": "+5511999999999",
+  "amount": "25.00",
+  "name": "LOJA EXEMPLO",
+  "city": "SAO PAULO",
+  "txid": "***",
+  "crc": "A1B2"
+}
+```
+
+This is useful for:
+
+- Verifying QR codes before scanning
+- Debugging payment issues
+- Extracting Pix keys from "Copia e Cola" strings
+
+## EMV / BR Code Format
+
+The QR code payload follows the **EMV QR Code Specification** adapted for Brazil by the Central Bank (BACEN). Key TLV (Tag-Length-Value) fields:
+
+| Tag | Name | Description |
+|-----|------|-------------|
+| `00` | Payload Format | Always `01` |
+| `26` | Merchant Account | Contains the Pix key (GUI: `br.gov.bcb.pix`) |
+| `52` | Merchant Category | `0000` for Pix |
+| `53` | Currency | `986` (BRL) |
+| `54` | Amount | Transaction value |
+| `58` | Country | `BR` |
+| `59` | Merchant Name | Recipient name |
+| `60` | Merchant City | City name |
+| `62` | Additional Data | Contains TxID |
+| `63` | CRC16 | Checksum for payload integrity |
+
+## Static vs Dynamic QR Codes
+
+**Static QR codes** (`pixcli qr generate`) are generated locally and can be reused. They're ideal for storefronts, printed materials, and personal transfers.
+
+**Dynamic QR codes** are tied to a specific charge created via the API (`pixcli charge create`). They include a unique URL that the payer's app resolves to get payment details, enabling expiry, exact amounts, and payment tracking.

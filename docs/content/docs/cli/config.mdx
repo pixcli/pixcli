@@ -1,0 +1,95 @@
+---
+title: pixcli config
+description: Configuration management commands
+---
+
+## Commands
+
+### `pixcli config init`
+
+Run the interactive setup wizard to create or update your configuration.
+
+```bash
+pixcli config init
+```
+
+The wizard prompts for:
+
+1. **PSP Backend** — currently supports `efi` (Efí/Gerencianet)
+2. **Environment** — `sandbox` or `production`
+3. **Client ID** — your OAuth2 client ID
+4. **Client Secret** — your OAuth2 client secret
+5. **Certificate path** — path to your P12/PEM certificate
+6. **Certificate password** — password for the certificate (if any)
+7. **Pix key** — your default Pix key
+
+The configuration is saved to `~/.pixcli/config.toml`.
+
+<Callout type="info">
+Running `config init` again will overwrite the existing configuration. Back up your `config.toml` if needed.
+</Callout>
+
+---
+
+### `pixcli config show`
+
+Display the current configuration with secrets redacted.
+
+```bash
+pixcli config show
+```
+
+**Output:**
+
+```
+⚙️  Pixcli Configuration
+   Path:    /home/user/.pixcli/config.toml
+   Default: sandbox
+   Output:  human
+
+   📋 Profile: sandbox
+      Backend:     efi
+      Environment: sandbox
+      Client ID:   Client_Id_abc1...
+      Secret:      ***
+      Certificate: /home/user/.pixcli/certs/sandbox.p12
+      Pix Key:     +5511999999999
+
+   📋 Profile: production
+      Backend:     efi
+      Environment: production
+      Client ID:   Client_Id_prod...
+      Secret:      ***
+      Certificate: /home/user/.pixcli/certs/production.p12
+      Pix Key:     +5511999999999
+```
+
+#### JSON output
+
+```bash
+pixcli config show --output json
+```
+
+```json
+{
+  "defaults": {
+    "profile": "sandbox",
+    "output": "human"
+  },
+  "profiles": {
+    "sandbox": {
+      "backend": "efi",
+      "environment": "sandbox",
+      "client_id": "Client_Id_abc123...",
+      "client_secret": "***",
+      "certificate": "/home/user/.pixcli/certs/sandbox.p12",
+      "certificate_password": "***",
+      "pix_key": "+5511999999999"
+    }
+  }
+}
+```
+
+## Config File Reference
+
+See [Configuration](/docs/getting-started/configuration) for the complete config file format, all fields, environment variable overrides, and multiple profile setup.

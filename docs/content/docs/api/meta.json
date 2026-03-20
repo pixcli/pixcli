@@ -1,0 +1,4 @@
+{
+  "title": "API Reference",
+  "pages": ["pix-core", "pix-efi", "pix-provider"]
+}

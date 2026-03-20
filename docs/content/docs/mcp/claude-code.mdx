@@ -1,0 +1,128 @@
+---
+title: Claude Code Setup
+description: Configure Claude Code to use Pixcli via MCP
+---
+
+## Prerequisites
+
+- Pixcli installed and configured (`pixcli config init`)
+- Claude Code or Claude Desktop installed
+
+## Configuration
+
+### Claude Code (CLI)
+
+Add the MCP server to your project's `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "pixcli": {
+      "command": "pix-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "pixcli": {
+      "command": "pix-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+### With a specific config file
+
+If your Pixcli config is in a non-standard location:
+
+```json
+{
+  "mcpServers": {
+    "pixcli": {
+      "command": "pix-mcp",
+      "args": [],
+      "env": {
+        "PIXCLI_CONFIG": "/path/to/config.toml"
+      }
+    }
+  }
+}
+```
+
+### With sandbox mode
+
+```json
+{
+  "mcpServers": {
+    "pixcli": {
+      "command": "pix-mcp",
+      "args": ["--sandbox"],
+      "env": {}
+    }
+  }
+}
+```
+
+## Verification
+
+After adding the configuration:
+
+1. Restart Claude Code / Claude Desktop
+2. Look for the 🔌 MCP icon in the interface
+3. Click it to see the available Pixcli tools
+4. Try: "Check my Pix balance"
+
+## Example Usage
+
+```
+You: Create a Pix charge for R$100 with description "Consulting fee"
+
+Claude: I'll create that charge for you.
+
+[Calling create_charge with amount="100.00", description="Consulting fee"]
+
+Done! Here's your charge:
+- TxID: abc123def456
+- Amount: R$100.00
+- Status: ATIVA (active)
+- Expires: in 1 hour
+- BR Code: 00020126580014br.gov.bcb.pix...
+
+You can share the BR Code with the payer, or they can scan the QR code.
+```
+
+## Troubleshooting
+
+### "Server not found" or "Failed to start"
+
+- Verify `pix-mcp` is in your PATH: `which pix-mcp`
+- If installed via cargo, ensure `~/.cargo/bin` is in your PATH
+- Try the full path: `"command": "/home/user/.cargo/bin/pix-mcp"`
+
+### "Authentication failed"
+
+- Run `pixcli config show` to verify your credentials
+- Ensure the certificate file exists and is readable
+- Try `pixcli balance` to test the config independently
+
+### Tools not appearing
+
+- Restart the application after changing config
+- Check the MCP server logs: `pix-mcp 2>mcp.log` then inspect `mcp.log`
