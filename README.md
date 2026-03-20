@@ -3,8 +3,8 @@
 **Make Pix payments from your terminal. Built for developers and AI agents.**
 
 [![CI](https://github.com/pixcli/pixcli/actions/workflows/ci.yml/badge.svg)](https://github.com/pixcli/pixcli/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/pixcli.svg)](https://crates.io/crates/pixcli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://docs-ecru-eta-65.vercel.app)
 
 ---
 
