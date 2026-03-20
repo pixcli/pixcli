@@ -1,0 +1,98 @@
+---
+title: pix-config
+description: Configuration management for profiles, credentials, and environment overrides
+---
+
+The `pix-config` crate provides shared configuration types used by both the CLI and the MCP server. It handles loading TOML config files, profile selection, and environment variable overrides.
+
+```toml
+[dependencies]
+pix-config = "0.1"
+```
+
+## PixConfig
+
+The top-level configuration struct.
+
+```rust
+use pix_config::PixConfig;
+
+// Load from default path (~/.pixcli/config.toml)
+let config = PixConfig::load(None)?;
+
+// Load from custom path
+let config = PixConfig::load(Some(Path::new("/etc/pixcli/config.toml")))?;
+
+// Save (creates file with 0600 permissions on Unix)
+config.save(None)?;
+```
+
+### Default Path Resolution
+
+1. Check `PIXCLI_CONFIG` environment variable
+2. Fall back to `~/.pixcli/config.toml`
+
+## Profiles
+
+Each profile contains PSP credentials and settings:
+
+```toml
+[defaults]
+profile = "default"
+output = "human"
+
+[profiles.default]
+backend = "efi"
+environment = "sandbox"
+client_id = "your-client-id"
+client_secret = "your-client-secret"
+certificate = "/path/to/cert.p12"
+certificate_password = ""
+default_pix_key = "+5511999999999"
+```
+
+### Accessing Profiles
+
+```rust
+// Get the default profile
+let profile = config.get_profile(None)?;
+
+// Get a named profile
+let profile = config.get_profile(Some("production"))?;
+
+// Access fields
+println!("Backend: {}", profile.backend);
+println!("Environment: {}", profile.environment);
+```
+
+## Environment Variable Overrides
+
+Environment variables override the active profile's values:
+
+| Variable | Overrides |
+|----------|-----------|
+| `PIXCLI_CONFIG` | Config file path |
+| `PIXCLI_CLIENT_ID` | `client_id` |
+| `PIXCLI_CLIENT_SECRET` | `client_secret` |
+| `PIXCLI_CERTIFICATE` | `certificate` path |
+| `PIXCLI_CERTIFICATE_PASSWORD` | `certificate_password` |
+| `PIXCLI_PIX_KEY` | `default_pix_key` |
+
+This is useful for CI/CD pipelines and container deployments where you don't want config files on disk.
+
+## Path Expansion
+
+The `certificate` field supports `~` expansion:
+
+```toml
+certificate = "~/certs/efi.p12"
+# Expands to /home/user/certs/efi.p12
+```
+
+## File Security
+
+On Unix systems, config files are created with `0600` permissions (owner read/write only). This prevents other users on the system from reading your PSP credentials.
+
+## Full API Documentation
+
+For the complete auto-generated API reference, see [docs.rs/pix-config](https://docs.rs/pix-config).

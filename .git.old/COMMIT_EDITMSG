@@ -1,0 +1,17 @@
+docs: Phase 6 — complete Fumadocs documentation site
+
+- Set up Fumadocs Next.js app with MDX content source
+- Configured Pixcli branding (green #22c55e color, dark mode enabled)
+- Created 23 MDX documentation pages across 6 sections:
+  * Getting Started: installation, configuration, first QR code
+  * CLI Commands: complete reference for all 6 commands
+  * API Reference: pix-core, pix-efi, pix-provider crates
+  * MCP Server: integration with Claude Code and OpenClaw
+  * Webhooks: setup, deployment (Docker/VPS/Cloud), event handling
+  * Guides: Efí sandbox, production setup, troubleshooting
+- Landing page with hero, feature cards, and quick start snippet
+- Configured search with Orama, dark mode, responsive design
+- pnpm build succeeds, dev server starts on port 3000
+- Ready for local testing and Vercel deployment
+
+Author: Felipe Orlando <fobsouza@gmail.com>

@@ -1,0 +1,48 @@
+---
+title: Contributing
+description: How to contribute to pixcli
+---
+
+We welcome contributions! Whether it's a bug fix, new feature, documentation improvement, or a new PSP backend.
+
+## Quick Start
+
+```bash
+git clone https://github.com/pixcli/pixcli.git
+cd pixcli
+cargo build --workspace
+cargo test --workspace
+```
+
+## Full Guide
+
+See the [CONTRIBUTING.md](https://github.com/pixcli/pixcli/blob/main/CONTRIBUTING.md) file for the complete contributing guide, including:
+
+- Development environment setup
+- Running tests and lints
+- Code style guidelines
+- Commit message format (Conventional Commits)
+- How to add a new PSP provider
+- Pull request process
+
+## Architecture
+
+Pixcli is organized as a Cargo workspace with 7 crates:
+
+| Crate | Purpose |
+|-------|---------|
+| `pix-core` | Core types, Pix key validation, CRC16 |
+| `pix-brcode` | EMV/BRCode encoder and decoder |
+| `pix-provider` | `PixProvider` trait and shared types |
+| `pix-config` | Configuration loading, profiles, env overrides |
+| `pix-efi` | Efí (Gerencianet) backend with OAuth2 + mTLS |
+| `pix-mcp` | MCP server for AI agent integration |
+| `pix-webhook-server` | Standalone webhook receiver |
+
+The CLI binary (`src/`) ties all crates together.
+
+## Reporting Issues
+
+- [Bug reports](https://github.com/pixcli/pixcli/issues/new?template=bug_report.md)
+- [Feature requests](https://github.com/pixcli/pixcli/issues/new?template=feature_request.md)
+- [Security vulnerabilities](https://github.com/pixcli/pixcli/blob/main/.github/SECURITY.md) — please report privately

@@ -1,0 +1,93 @@
+---
+title: pix-core
+description: Core Pix primitives — key validation, CRC16, and BR Code encoding
+---
+
+The `pix-core` crate provides the foundational types and functions for working with Brazilian Pix payments. It has no network dependencies and can be used in any Rust project.
+
+```toml
+[dependencies]
+pix-core = "0.1"
+```
+
+## Modules
+
+### `crc16` — CRC-16/CCITT-FALSE
+
+Computes the CRC-16 checksum used in EMV/BR Code payloads.
+
+```rust
+use pix_core::crc16::crc16_ccitt;
+
+let payload = "00020126580014br.gov.bcb.pix0136+55119999999990000";
+let checksum = crc16_ccitt(payload.as_bytes());
+println!("CRC16: {:04X}", checksum); // e.g. "A1B2"
+```
+
+### `pix_key` — Pix Key Validation
+
+Validates and classifies Pix keys (CPF, CNPJ, email, phone, EVP).
+
+```rust
+use pix_core::pix_key::PixKey;
+
+// Parse and validate a Pix key
+let key = PixKey::parse("+5511999999999").unwrap();
+assert!(key.is_phone());
+
+let key = PixKey::parse("12345678901").unwrap();
+assert!(key.is_cpf());
+
+let key = PixKey::parse("user@example.com").unwrap();
+assert!(key.is_email());
+
+// Random key (EVP/UUID format)
+let key = PixKey::parse("7d9f8a2e-3b4c-4e5f-9a0b-1c2d3e4f5a6b").unwrap();
+assert!(key.is_evp());
+```
+
+#### Key Types
+
+| Type | Format | Example |
+|------|--------|---------|
+| CPF | 11 digits | `12345678901` |
+| CNPJ | 14 digits | `12345678000190` |
+| Phone | `+55` + DDD + number | `+5511999999999` |
+| Email | Valid email | `user@example.com` |
+| EVP | UUID v4 | `7d9f8a2e-3b4c-4e5f-9a0b-1c2d3e4f5a6b` |
+
+### BR Code Encoding
+
+The `pix-brcode` crate (re-exported from `pix-core`) handles EMV/BR Code generation and parsing.
+
+```rust
+use pix_brcode::encoder::StaticBrCodeParams;
+
+let params = StaticBrCodeParams {
+    key: "+5511999999999".to_string(),
+    amount: Some(25.0),
+    name: "LOJA EXEMPLO".to_string(),
+    city: "SAO PAULO".to_string(),
+    txid: None,
+    description: None,
+};
+
+let brcode = params.encode();
+println!("BR Code: {}", brcode);
+// Output: 00020126580014br.gov.bcb.pix0136+5511999999999...
+```
+
+#### Decoding a BR Code
+
+```rust
+use pix_brcode::decoder::decode_brcode;
+
+let payload = "00020126580014br.gov.bcb.pix0136+5511999999999...";
+let decoded = decode_brcode(payload).unwrap();
+println!("Key: {}", decoded.key);
+println!("Amount: {:?}", decoded.amount);
+```
+
+## Full API Documentation
+
+For the complete auto-generated API reference, see [docs.rs/pix-core](https://docs.rs/pix-core).

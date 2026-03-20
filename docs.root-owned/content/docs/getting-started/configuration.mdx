@@ -1,0 +1,132 @@
+---
+title: Configuration
+description: Set up Pixcli with your PSP credentials
+---
+
+## Interactive Setup
+
+The fastest way to configure Pixcli:
+
+```bash
+pixcli config init
+```
+
+This wizard walks you through:
+
+1. Choosing a PSP backend (currently Efí/Gerencianet)
+2. Selecting the environment (sandbox or production)
+3. Entering your Client ID and Client Secret
+4. Specifying the path to your P12/PEM certificate
+5. Setting your default Pix key
+
+## Config File Location
+
+Pixcli stores its configuration at:
+
+```
+~/.pixcli/config.toml
+```
+
+You can override this with the `PIXCLI_CONFIG` environment variable:
+
+```bash
+export PIXCLI_CONFIG=/path/to/custom/config.toml
+```
+
+## Config File Format
+
+```toml
+[defaults]
+profile = "sandbox"
+output = "human"
+
+[profiles.sandbox]
+backend = "efi"
+environment = "sandbox"
+client_id = "Client_Id_abc123..."
+client_secret = "Client_Secret_xyz789..."
+certificate = "/home/user/.pixcli/certs/sandbox.p12"
+certificate_password = ""
+pix_key = "+5511999999999"
+
+[profiles.production]
+backend = "efi"
+environment = "production"
+client_id = "Client_Id_prod..."
+client_secret = "Client_Secret_prod..."
+certificate = "/home/user/.pixcli/certs/production.p12"
+certificate_password = "my-secure-password"
+pix_key = "+5511999999999"
+```
+
+### Fields Reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `backend` | Yes | PSP backend (`efi`) |
+| `environment` | Yes | `sandbox` or `production` |
+| `client_id` | Yes | OAuth2 Client ID from your PSP |
+| `client_secret` | Yes | OAuth2 Client Secret from your PSP |
+| `certificate` | Yes | Path to P12/PEM certificate for mTLS |
+| `certificate_password` | No | Password for the P12 certificate |
+| `pix_key` | No | Default Pix key for charges |
+
+## Environment Variables
+
+All config values can be overridden via environment variables:
+
+| Variable | Overrides |
+|----------|-----------|
+| `PIXCLI_CONFIG` | Config file path |
+| `PIXCLI_CLIENT_ID` | `client_id` |
+| `PIXCLI_CLIENT_SECRET` | `client_secret` |
+| `PIXCLI_CERTIFICATE` | `certificate` |
+| `PIXCLI_CERTIFICATE_PASSWORD` | `certificate_password` |
+| `PIXCLI_PIX_KEY` | `pix_key` |
+| `PIXCLI_ENVIRONMENT` | `environment` |
+
+## Multiple Profiles
+
+Use profiles to switch between sandbox and production:
+
+```bash
+# Use the sandbox profile
+pixcli --profile sandbox balance
+
+# Use production
+pixcli --profile production balance
+
+# Or force sandbox mode on any profile
+pixcli --sandbox balance
+```
+
+## Verify Configuration
+
+```bash
+pixcli config show
+```
+
+Output (secrets are redacted):
+
+```
+⚙️  Pixcli Configuration
+   Path:    /home/user/.pixcli/config.toml
+   Default: sandbox
+   Output:  human
+
+   📋 Profile: sandbox
+      Backend:     efi
+      Environment: sandbox
+      Client ID:   Client_Id_abc1...
+      Secret:      ***
+      Certificate: /home/user/.pixcli/certs/sandbox.p12
+      Pix Key:     +5511999999999
+```
+
+<Callout type="warn">
+Never commit your `config.toml` or certificates to version control. The `.pixcli/` directory should remain in your home folder.
+</Callout>
+
+## Next Steps
+
+With configuration in place, try [generating your first QR code](/docs/getting-started/first-qr-code).

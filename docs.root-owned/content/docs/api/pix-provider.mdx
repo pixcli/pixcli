@@ -1,0 +1,172 @@
+---
+title: pix-provider
+description: Provider trait for PSP abstraction
+---
+
+The `pix-provider` crate defines the `PixProvider` trait — the abstraction layer that allows Pixcli to work with any Pix payment service provider (PSP).
+
+```toml
+[dependencies]
+pix-provider = "0.1"
+```
+
+## The PixProvider Trait
+
+```rust
+use async_trait::async_trait;
+use pix_provider::*;
+
+#[async_trait]
+pub trait PixProvider: Send + Sync {
+    /// Get account balance.
+    async fn get_balance(&self) -> Result<Balance, ProviderError>;
+
+    /// Create a new immediate charge.
+    async fn create_charge(&self, request: ChargeRequest) -> Result<Charge, ProviderError>;
+
+    /// Get a charge by TxID.
+    async fn get_charge(&self, txid: &str) -> Result<Charge, ProviderError>;
+
+    /// List charges within a time range.
+    async fn list_charges(&self, filter: TransactionFilter) -> Result<Vec<Charge>, ProviderError>;
+
+    /// List received Pix transactions.
+    async fn list_pix(&self, filter: TransactionFilter) -> Result<Vec<PixTransaction>, ProviderError>;
+
+    /// Get a Pix transaction by E2E ID.
+    async fn get_pix(&self, e2eid: &str) -> Result<PixTransaction, ProviderError>;
+
+    /// Register a webhook for a Pix key.
+    async fn register_webhook(&self, key: &str, url: &str) -> Result<(), ProviderError>;
+
+    /// Get the registered webhook for a Pix key.
+    async fn get_webhook(&self, key: &str) -> Result<Webhook, ProviderError>;
+
+    /// Remove the webhook for a Pix key.
+    async fn remove_webhook(&self, key: &str) -> Result<(), ProviderError>;
+}
+```
+
+## Implementing a Custom Provider
+
+To add support for a new PSP (e.g., Banco do Brasil, Itaú), implement the `PixProvider` trait:
+
+```rust
+use async_trait::async_trait;
+use pix_provider::*;
+
+pub struct MyBankProvider {
+    api_key: String,
+    base_url: String,
+}
+
+#[async_trait]
+impl PixProvider for MyBankProvider {
+    async fn get_balance(&self) -> Result<Balance, ProviderError> {
+        // Call your bank's API
+        let response = reqwest::get(&format!("{}/balance", self.base_url))
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        // Parse response
+        let data: serde_json::Value = response.json().await
+            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+
+        Ok(Balance {
+            available: data["available"].as_str().unwrap_or("0").to_string(),
+        })
+    }
+
+    async fn create_charge(&self, request: ChargeRequest) -> Result<Charge, ProviderError> {
+        // Implement charge creation for your bank
+        todo!()
+    }
+
+    // ... implement remaining methods
+}
+```
+
+## Built-in Providers
+
+### EfiProvider
+
+The `pix-efi` crate provides the `EfiClient` which implements `PixProvider` for the Efí (Gerencianet) API. This is currently the only built-in provider.
+
+```rust
+use pix_efi::{EfiClient, EfiConfig};
+
+let config = EfiConfig { /* ... */ };
+let provider: Box<dyn PixProvider> = Box::new(EfiClient::new(config)?);
+
+// Use through the trait
+let balance = provider.get_balance().await?;
+```
+
+## Core Types
+
+### Balance
+
+```rust
+pub struct Balance {
+    pub available: String,
+}
+```
+
+### ChargeRequest
+
+```rust
+pub struct ChargeRequest {
+    pub amount: String,
+    pub pix_key: String,
+    pub description: Option<String>,
+    pub expiration: Option<u32>,
+    pub debtor: Option<Debtor>,
+    pub txid: Option<String>,
+}
+```
+
+### Charge
+
+```rust
+pub struct Charge {
+    pub txid: String,
+    pub status: String,
+    pub amount: String,
+    pub pix_key: String,
+    pub description: Option<String>,
+    pub brcode: Option<String>,
+    pub created_at: String,
+    pub expiration: Option<u32>,
+}
+```
+
+### PixTransaction
+
+```rust
+pub struct PixTransaction {
+    pub e2eid: String,
+    pub amount: String,
+    pub timestamp: String,
+    pub payer_name: Option<String>,
+    pub payer_doc: Option<String>,
+    pub txid: Option<String>,
+    pub info: Option<String>,
+}
+```
+
+### ProviderError
+
+```rust
+pub enum ProviderError {
+    Auth(String),
+    Network(String),
+    Api { status: u16, message: String },
+    Parse(String),
+    NotFound(String),
+    Other(String),
+}
+```
+
+## Full API Documentation
+
+For the complete auto-generated API reference, see [docs.rs/pix-provider](https://docs.rs/pix-provider).

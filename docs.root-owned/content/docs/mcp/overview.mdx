@@ -1,0 +1,94 @@
+---
+title: MCP Server Overview
+description: Use Pix operations from AI agents via the Model Context Protocol
+---
+
+Pixcli includes an MCP (Model Context Protocol) server that exposes Pix operations as tools for AI agents. This allows Claude, GPT, and other LLM-based agents to create charges, check balances, and manage payments through natural language.
+
+## What is MCP?
+
+The [Model Context Protocol](https://modelcontextprotocol.io) is an open standard for connecting AI agents to external tools and data sources. It defines a JSON-RPC-based protocol that AI assistants use to discover and invoke tools.
+
+## Starting the MCP Server
+
+```bash
+pix-mcp
+```
+
+The `pix-mcp` binary is included when you install Pixcli. It reads from the same `~/.pixcli/config.toml` configuration file.
+
+## Available Tools
+
+The MCP server exposes the following tools:
+
+| Tool | Description |
+|------|-------------|
+| `get_balance` | Query account balance |
+| `create_charge` | Create a new Pix charge |
+| `get_charge` | Get charge details by TxID |
+| `list_charges` | List recent charges |
+| `list_pix` | List received Pix transactions |
+| `generate_qr` | Generate a static Pix QR code |
+
+### Tool Details
+
+#### `get_balance`
+
+No parameters required. Returns the available balance.
+
+#### `create_charge`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `amount` | string | Yes | Amount in BRL |
+| `key` | string | No | Pix key (uses default) |
+| `description` | string | No | Payment description |
+| `expiry` | number | No | Expiry in seconds |
+
+#### `get_charge`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `txid` | string | Yes | Transaction ID |
+
+#### `list_charges`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `days` | number | No | Days to look back (default: 7) |
+
+#### `list_pix`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `days` | number | No | Days to look back (default: 7) |
+
+#### `generate_qr`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `key` | string | Yes | Pix key |
+| `amount` | number | No | Amount in BRL |
+| `name` | string | No | Merchant name |
+| `city` | string | No | Merchant city |
+
+## Example Conversations
+
+### With Claude Code
+
+> **You:** Check my Pix balance
+>
+> **Claude:** Your current available balance is R$1,250.00.
+
+> **You:** Create a charge for R$50 with description "Monthly subscription"
+>
+> **Claude:** I've created a Pix charge:
+> - TxID: `abc123def456`
+> - Amount: R$50.00
+> - Status: ATIVA
+> - Expires in 1 hour
+
+## Next Steps
+
+- [Configure with Claude Code](/docs/mcp/claude-code)
+- [Configure with OpenClaw](/docs/mcp/openclaw)

@@ -1,0 +1,100 @@
+---
+title: Security Best Practices
+description: How pixcli protects credentials and how to harden your deployment
+---
+
+Pixcli is designed with security in mind. This guide covers the built-in protections and best practices for production deployments.
+
+## Credential Storage
+
+Configuration is stored at `~/.pixcli/config.toml` with restrictive file permissions:
+
+- **Unix**: `0600` (owner read/write only)
+- Created automatically by `pixcli config init`
+
+Credentials are stored in plaintext — the file permission model relies on OS-level access control. Do not commit this file to version control.
+
+### Environment Variable Overrides
+
+For CI/CD or containerized environments, use environment variables instead of the config file:
+
+```bash
+export PIXCLI_CLIENT_ID="your-client-id"
+export PIXCLI_CLIENT_SECRET="your-client-secret"
+export PIXCLI_CERTIFICATE="/path/to/cert.p12"
+export PIXCLI_CERTIFICATE_PASSWORD="optional-password"
+export PIXCLI_PIX_KEY="+5511999999999"
+```
+
+## mTLS Authentication
+
+The Efí provider uses mutual TLS (mTLS) for all API communication:
+
+1. You provide a PKCS#12 (`.p12`) certificate from Efí
+2. The client presents this certificate on every request
+3. The server validates your identity via the certificate chain
+
+This is handled automatically by `pix-efi` — just configure the certificate path.
+
+## OAuth2 Token Management
+
+Tokens are:
+- Cached in memory (never written to disk)
+- Refreshed automatically 60 seconds before expiration
+- Protected by a read-write lock for thread safety
+- Obtained via the `client_credentials` grant with Basic authentication
+
+## Webhook Server Hardening
+
+The standalone webhook server (`pix-webhook-server`) includes:
+
+### Body Size Limits
+
+All incoming requests are limited to **256 KB** to prevent memory exhaustion attacks.
+
+### Forward URL Validation
+
+When using `--forward-url`, only `http://` and `https://` schemes are accepted.
+
+### Production Recommendations
+
+For production webhook deployments:
+
+1. **Deploy behind a reverse proxy** (nginx, Caddy) with mTLS termination
+2. **Validate Efí's client certificate** using their CA certificate
+3. **Use HTTPS** for all webhook endpoints
+4. **Monitor** webhook delivery and response times
+5. **Set up alerts** for repeated delivery failures
+
+## Input Validation
+
+Pixcli validates all inputs before processing:
+
+- **Pix keys**: CPF check digits, CNPJ check digits, E.164 phone format, email format, UUID v4
+- **BRCode fields**: Merchant name (max 25 chars), city (max 15 chars), txid (max 25 chars), amount (max 13 chars)
+- **API responses**: Status codes are checked and mapped to typed errors
+
+## Forward-Compatible API Design
+
+Public enums use `#[non_exhaustive]` to allow adding variants in minor versions without breaking downstream code:
+
+- `PixKeyType` — Pix key classification
+- `ChargeStatus` — charge lifecycle states
+- `EfiEnvironment` — API environments
+
+Always include a wildcard arm when matching these enums:
+
+```rust
+match key_type {
+    PixKeyType::Cpf => { /* ... */ }
+    PixKeyType::Cnpj => { /* ... */ }
+    _ => { /* handle future variants */ }
+}
+```
+
+## Sensitive Data Handling
+
+- `client_secret` is annotated with `#[serde(skip_serializing)]` to prevent accidental serialization
+- `pixcli config show` redacts secrets in output
+- Tracing logs never include credentials or tokens
+- Sandbox mode (`--sandbox`) prevents accidental production operations during development

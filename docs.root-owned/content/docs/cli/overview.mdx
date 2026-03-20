@@ -1,0 +1,97 @@
+---
+title: CLI Overview
+description: Complete reference for all Pixcli commands and global options
+---
+
+## Command Tree
+
+```
+pixcli
+├── balance              Show account balance
+├── charge
+│   ├── create           Create a new Pix charge
+│   ├── get <txid>       Get charge details
+│   └── list             List recent charges
+├── pix
+│   ├── list             List received Pix transactions
+│   └── get <e2eid>      Get transaction details
+├── qr
+│   ├── generate         Generate a static Pix QR code
+│   └── decode           Decode a BR Code payload
+├── webhook
+│   ├── register         Register a webhook URL
+│   ├── get              Get webhook for a key
+│   ├── remove           Remove a webhook
+│   └── listen           Start local webhook listener
+└── config
+    ├── init             Interactive setup wizard
+    └── show             Show current configuration
+```
+
+## Global Flags
+
+These flags work with any command:
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--profile <name>` | `-p` | From config | PSP profile to use |
+| `--output <format>` | `-o` | `human` | Output format |
+| `--sandbox` | — | `false` | Force sandbox environment |
+| `--verbose` | `-v` | `false` | Enable debug logging |
+| `--quiet` | `-q` | `false` | Suppress non-essential output |
+
+## Output Formats
+
+Pixcli supports three output formats:
+
+### Human (default)
+
+Colored, formatted output for terminal use:
+
+```bash
+pixcli balance
+```
+
+```
+💰 Account Balance
+   Available: R$1,250.00
+```
+
+### JSON
+
+Machine-readable JSON output, ideal for scripting:
+
+```bash
+pixcli balance --output json
+```
+
+```json
+{
+  "available": "1250.00"
+}
+```
+
+### Table
+
+Structured table output for lists:
+
+```bash
+pixcli charge list --output table
+```
+
+```
+┌──────────────┬─────────┬────────┬─────────────────────┐
+│ TxID         │ Amount  │ Status │ Created             │
+├──────────────┼─────────┼────────┼─────────────────────┤
+│ abc123def456 │ R$25.00 │ ATIVA  │ 2026-03-19T10:00:00 │
+│ xyz789ghi012 │ R$50.00 │ PAGA   │ 2026-03-18T15:30:00 │
+└──────────────┴─────────┴────────┴─────────────────────┘
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | General error (invalid config, network failure, etc.) |
+| `2` | Invalid arguments or usage error |

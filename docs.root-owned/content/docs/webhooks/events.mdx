@@ -1,0 +1,126 @@
+---
+title: Webhook Events
+description: Webhook payload format and event processing
+---
+
+## Payload Format
+
+When a Pix payment is received, Efí sends a POST request with the following JSON payload:
+
+```json
+{
+  "pix": [
+    {
+      "endToEndId": "E12345678202603191000abc123def456",
+      "txid": "abc123def456",
+      "chave": "+5511999999999",
+      "valor": "25.00",
+      "horario": "2026-03-19T10:05:00.000Z",
+      "infoPagador": "Order #123",
+      "pagador": {
+        "nome": "João Silva",
+        "cpf": "***678901"
+      }
+    }
+  ]
+}
+```
+
+## Payload Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pix` | array | Array of Pix transactions (usually 1) |
+| `pix[].endToEndId` | string | Unique end-to-end transaction ID |
+| `pix[].txid` | string | Your charge's transaction ID |
+| `pix[].chave` | string | Pix key that received the payment |
+| `pix[].valor` | string | Amount in BRL |
+| `pix[].horario` | string | Payment timestamp (ISO 8601) |
+| `pix[].infoPagador` | string | Payer-provided info (from charge description) |
+| `pix[].pagador.nome` | string | Payer's name |
+| `pix[].pagador.cpf` | string | Payer's CPF (partially masked) |
+
+<Callout type="info">
+The `pix` array can contain multiple transactions if several payments arrive simultaneously. Always iterate over the array.
+</Callout>
+
+## Processing Events
+
+### Forward to Slack
+
+```bash
+pixcli webhook listen \
+  --port 8080 \
+  --forward "https://hooks.slack.com/services/T00/B00/xxx"
+```
+
+The listener reformats the Pix event into a readable message before forwarding.
+
+### Forward to Discord
+
+```bash
+pixcli webhook listen \
+  --port 8080 \
+  --forward "https://discord.com/api/webhooks/123/abc"
+```
+
+### Forward to Telegram
+
+Use a Telegram Bot API URL:
+
+```bash
+pixcli webhook listen \
+  --port 8080 \
+  --forward "https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>"
+```
+
+### Save to JSONL File
+
+```bash
+pixcli webhook listen --port 8080 --output events.jsonl
+```
+
+Each event is appended as a single JSON line:
+
+```jsonl
+{"timestamp":"2026-03-19T10:05:00Z","e2eid":"E123...","txid":"abc123","amount":"25.00","payer":"João Silva"}
+{"timestamp":"2026-03-19T11:30:00Z","e2eid":"E456...","txid":"xyz789","amount":"50.00","payer":"Maria Santos"}
+```
+
+### Multiple Destinations
+
+Forward and save simultaneously:
+
+```bash
+pixcli webhook listen \
+  --port 8080 \
+  --forward "https://hooks.slack.com/services/T00/B00/xxx" \
+  --output events.jsonl
+```
+
+## Processing with Custom Scripts
+
+Read from the JSONL file with standard tools:
+
+```bash
+# Count today's payments
+grep "$(date +%Y-%m-%d)" events.jsonl | wc -l
+
+# Sum amounts with jq
+cat events.jsonl | jq -s 'map(.amount | tonumber) | add'
+
+# Watch for new events
+tail -f events.jsonl | jq .
+```
+
+## Event Verification
+
+In production, verify that webhook events actually come from Efí:
+
+1. **mTLS** — the primary verification mechanism. If your nginx is configured correctly, only Efí can connect.
+2. **Verify the charge** — after receiving an event, call `pixcli charge get <txid>` to confirm the payment status is `CONCLUIDA`.
+3. **Idempotency** — use the `endToEndId` as a unique key to prevent processing duplicate events.
+
+<Callout type="warn">
+Never trust webhook payloads alone for critical business logic. Always verify the charge status via the API before fulfilling orders.
+</Callout>

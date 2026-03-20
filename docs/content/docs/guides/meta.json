@@ -1,4 +1,4 @@
 {
   "title": "Guides",
-  "pages": ["efi-sandbox", "production-setup", "troubleshooting"]
+  "pages": ["efi-sandbox", "production-setup", "security", "contributing", "troubleshooting"]
 }
