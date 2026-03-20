@@ -20,7 +20,6 @@ pix-core = { workspace = true }
 pix-brcode = { workspace = true }
 pix-provider = { workspace = true }
 pix-efi = { workspace = true }
-pix-config = { workspace = true }
 rmcp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -29,6 +28,8 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
+directories = { workspace = true }
+toml = { workspace = true }
 schemars = { workspace = true }
 
 [dev-dependencies]

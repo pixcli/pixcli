@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Provider trait and error types for Pix payment service providers.
 //!
 //! This crate defines the abstract interface that all Pix providers (Efí, Mercado Pago, etc.)

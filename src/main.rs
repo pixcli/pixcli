@@ -1,3 +1,5 @@
+// CLI binary — stdout output is expected and intentional.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
 //! Pixcli — a CLI tool for Brazilian Pix payments.
 //!
 //! Supports creating charges, listing transactions, sending payments,
@@ -93,39 +95,18 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Balance => {
-            commands::balance::run(cli.profile.as_deref(), cli.sandbox, cli.output, None).await
+            commands::balance::run(cli.profile.as_deref(), cli.sandbox, cli.output).await
         }
         Commands::Charge { action } => {
-            commands::charge::run(
-                action,
-                cli.profile.as_deref(),
-                cli.sandbox,
-                cli.output,
-                None,
-            )
-            .await
+            commands::charge::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
         }
         Commands::Pix { action } => {
-            commands::pix_cmd::run(
-                action,
-                cli.profile.as_deref(),
-                cli.sandbox,
-                cli.output,
-                None,
-            )
-            .await
+            commands::pix_cmd::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
         }
-        Commands::Config { action } => commands::config_cmd::run(action, cli.output, None),
+        Commands::Config { action } => commands::config_cmd::run(action, cli.output),
         Commands::Qr { action } => commands::qr::run(action, cli.output),
         Commands::Webhook { action } => {
-            commands::webhook::run(
-                action,
-                cli.profile.as_deref(),
-                cli.sandbox,
-                cli.output,
-                None,
-            )
-            .await
+            commands::webhook::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
         }
     }
 }

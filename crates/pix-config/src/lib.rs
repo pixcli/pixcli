@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Shared TOML-based configuration types for the Pix CLI and MCP server.
 //!
 //! Configuration is stored at `~/.pixcli/config.toml` (or overridden via

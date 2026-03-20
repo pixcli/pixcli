@@ -3,8 +3,6 @@
 //! Register, query, and remove Efí Pix webhooks, and start a local
 //! webhook listener server.
 
-use std::path::Path;
-
 use anyhow::Result;
 use clap::Subcommand;
 
@@ -54,14 +52,13 @@ pub async fn run(
     profile: Option<&str>,
     sandbox: bool,
     format: OutputFormat,
-    config_path: Option<&Path>,
 ) -> Result<()> {
     match cmd {
         WebhookCommand::Register { key, url } => {
-            register(profile, sandbox, &key, &url, format, config_path).await
+            register(profile, sandbox, &key, &url, format).await
         }
-        WebhookCommand::Get { key } => get(profile, sandbox, &key, format, config_path).await,
-        WebhookCommand::Remove { key } => remove(profile, sandbox, &key, format, config_path).await,
+        WebhookCommand::Get { key } => get(profile, sandbox, &key, format).await,
+        WebhookCommand::Remove { key } => remove(profile, sandbox, &key, format).await,
         WebhookCommand::Listen {
             port,
             forward,
@@ -77,9 +74,8 @@ async fn register(
     key: &str,
     url: &str,
     format: OutputFormat,
-    config_path: Option<&Path>,
 ) -> Result<()> {
-    let config = crate::config::PixConfig::load(config_path)?;
+    let config = crate::config::PixConfig::load(None)?;
     let client = crate::client_factory::build_efi_client(&config, profile, sandbox)?;
 
     client.register_webhook(key, url).await?;
@@ -104,14 +100,8 @@ async fn register(
 }
 
 /// Gets the webhook info registered for a Pix key.
-async fn get(
-    profile: Option<&str>,
-    sandbox: bool,
-    key: &str,
-    format: OutputFormat,
-    config_path: Option<&Path>,
-) -> Result<()> {
-    let config = crate::config::PixConfig::load(config_path)?;
+async fn get(profile: Option<&str>, sandbox: bool, key: &str, format: OutputFormat) -> Result<()> {
+    let config = crate::config::PixConfig::load(None)?;
     let client = crate::client_factory::build_efi_client(&config, profile, sandbox)?;
 
     let info = client.get_webhook(key).await?;
@@ -138,9 +128,8 @@ async fn remove(
     sandbox: bool,
     key: &str,
     format: OutputFormat,
-    config_path: Option<&Path>,
 ) -> Result<()> {
-    let config = crate::config::PixConfig::load(config_path)?;
+    let config = crate::config::PixConfig::load(None)?;
     let client = crate::client_factory::build_efi_client(&config, profile, sandbox)?;
 
     client.remove_webhook(key).await?;
@@ -162,34 +151,139 @@ async fn remove(
 }
 
 /// Starts a local webhook listener server.
-///
-/// Reuses the handler from `pix-webhook-server` to avoid logic duplication.
 async fn listen(
     port: u16,
     forward_url: Option<String>,
     output_file: Option<String>,
     _format: OutputFormat,
 ) -> Result<()> {
+    use axum::extract::{DefaultBodyLimit, State};
+    use axum::http::StatusCode;
     use axum::routing::{get, post};
-    use axum::Router;
-    use pix_webhook_server::AppState;
+    use axum::{Json, Router};
+    use serde::{Deserialize, Serialize};
     use std::sync::Arc;
 
-    let state = Arc::new(AppState {
+    /// Maximum request body size (256 KB).
+    const MAX_BODY_SIZE: usize = 256 * 1024;
+
+    /// Shared state for the webhook listener.
+    struct ListenState {
+        forward_url: Option<String>,
+        output_file: Option<String>,
+        http_client: reqwest::Client,
+    }
+
+    /// Pix webhook event payload.
+    #[derive(Debug, Deserialize, Serialize)]
+    struct WebhookPayload {
+        pix: Vec<PixEvent>,
+    }
+
+    /// A single Pix event from a webhook notification.
+    #[derive(Debug, Deserialize, Serialize)]
+    struct PixEvent {
+        #[serde(rename = "endToEndId")]
+        end_to_end_id: String,
+        txid: Option<String>,
+        valor: String,
+        horario: String,
+        #[serde(rename = "infoPagador")]
+        info_pagador: Option<String>,
+        chave: Option<String>,
+        devolucoes: Option<Vec<serde_json::Value>>,
+    }
+
+    /// Handles incoming webhook POST requests.
+    async fn handle_webhook(
+        State(state): State<Arc<ListenState>>,
+        Json(payload): Json<WebhookPayload>,
+    ) -> StatusCode {
+        tracing::info!("Received webhook with {} event(s)", payload.pix.len());
+
+        for event in &payload.pix {
+            let event_json = match serde_json::to_string(event) {
+                Ok(j) => j,
+                Err(e) => {
+                    tracing::error!("Failed to serialize event: {e}");
+                    continue;
+                }
+            };
+
+            // Print to stdout
+            if let Ok(pretty) = serde_json::to_string_pretty(event) {
+                println!("{pretty}");
+            }
+
+            // Append to file (async I/O to avoid blocking the executor)
+            if let Some(ref path) = state.output_file {
+                use tokio::io::AsyncWriteExt;
+                match tokio::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .await
+                {
+                    Ok(mut file) => {
+                        let mut line = event_json.clone();
+                        line.push('\n');
+                        if let Err(e) = file.write_all(line.as_bytes()).await {
+                            tracing::error!("Failed to write to {path}: {e}");
+                        }
+                    }
+                    Err(e) => tracing::error!("Failed to open {path}: {e}"),
+                }
+            }
+
+            // Forward to URL
+            if let Some(ref url) = state.forward_url {
+                let client = state.http_client.clone();
+                let url = url.clone();
+                let body = event_json.clone();
+                tokio::spawn(async move {
+                    match client
+                        .post(&url)
+                        .body(body)
+                        .header("Content-Type", "application/json")
+                        .send()
+                        .await
+                    {
+                        Ok(resp) => tracing::info!("Forwarded to {url}: {}", resp.status()),
+                        Err(e) => tracing::warn!("Failed to forward to {url}: {e}"),
+                    }
+                });
+            }
+        }
+
+        StatusCode::OK
+    }
+
+    // Validate forward URL scheme.
+    if let Some(ref url) = forward_url {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            anyhow::bail!("forward URL must use http:// or https:// scheme, got: {url}");
+        }
+    }
+
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .pool_max_idle_per_host(5)
+        .build()?;
+
+    let state = Arc::new(ListenState {
         forward_url,
         output_file,
-        quiet: false,
-        http_client: reqwest::Client::new(),
-        api_key: None,
-        hmac_secret: None,
+        http_client,
     });
 
     let app = Router::new()
-        .route("/pix", post(pix_webhook_server::handlers::handle_webhook))
+        .route("/pix", post(handle_webhook))
         .route("/health", get(|| async { "OK" }))
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state);
 
-    let addr = format!("0.0.0.0:{port}");
+    let addr = format!("127.0.0.1:{port}");
     println!("Webhook listener starting on {addr}");
     println!("   Endpoint: POST http://{addr}/pix");
     println!("   Health:   GET  http://{addr}/health");
@@ -204,13 +298,17 @@ async fn listen(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
-    fn setup_config(content: &str) -> (tempfile::TempDir, PathBuf) {
+    fn setup_config(content: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, content).unwrap();
-        (dir, path)
+        std::env::set_var("PIXCLI_CONFIG", path.to_str().unwrap());
+        dir
+    }
+
+    fn cleanup() {
+        std::env::remove_var("PIXCLI_CONFIG");
     }
 
     const TEST_CONFIG: &str = r#"
@@ -228,133 +326,128 @@ default_pix_key = "+5511999999999"
 
     #[tokio::test]
     async fn test_webhook_register_fails_missing_cert() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
+        let _dir = setup_config(TEST_CONFIG);
         let result = register(
             None,
             false,
             "+5511999999999",
             "https://example.com/webhook",
             OutputFormat::Json,
-            Some(&path),
         )
         .await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_get_fails_missing_cert() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
-        let result = get(
-            None,
-            false,
-            "+5511999999999",
-            OutputFormat::Human,
-            Some(&path),
-        )
-        .await;
+        let _dir = setup_config(TEST_CONFIG);
+        let result = get(None, false, "+5511999999999", OutputFormat::Human).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_remove_fails_missing_cert() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
-        let result = remove(
-            None,
-            false,
-            "+5511999999999",
-            OutputFormat::Json,
-            Some(&path),
-        )
-        .await;
+        let _dir = setup_config(TEST_CONFIG);
+        let result = remove(None, false, "+5511999999999", OutputFormat::Json).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_register_no_profiles() {
-        let (_dir, path) = setup_config("");
+        let _dir = setup_config("");
         let result = register(
             None,
             false,
             "key",
             "https://example.com",
             OutputFormat::Human,
-            Some(&path),
         )
         .await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_get_no_profiles() {
-        let (_dir, path) = setup_config("");
-        let result = get(None, false, "key", OutputFormat::Json, Some(&path)).await;
+        let _dir = setup_config("");
+        let result = get(None, false, "key", OutputFormat::Json).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_remove_no_profiles() {
-        let (_dir, path) = setup_config("");
-        let result = remove(None, false, "key", OutputFormat::Human, Some(&path)).await;
+        let _dir = setup_config("");
+        let result = remove(None, false, "key", OutputFormat::Human).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_run_register() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
+        let _dir = setup_config(TEST_CONFIG);
         let cmd = WebhookCommand::Register {
             key: "+5511999999999".to_string(),
             url: "https://example.com/webhook".to_string(),
         };
-        let result = run(cmd, None, false, OutputFormat::Json, Some(&path)).await;
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
         assert!(result.is_err()); // cert missing
     }
 
     #[tokio::test]
     async fn test_webhook_run_get() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
+        let _dir = setup_config(TEST_CONFIG);
         let cmd = WebhookCommand::Get {
             key: "+5511999999999".to_string(),
         };
-        let result = run(cmd, None, false, OutputFormat::Human, Some(&path)).await;
+        let result = run(cmd, None, false, OutputFormat::Human).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_run_remove() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
+        let _dir = setup_config(TEST_CONFIG);
         let cmd = WebhookCommand::Remove {
             key: "+5511999999999".to_string(),
         };
-        let result = run(cmd, None, false, OutputFormat::Json, Some(&path)).await;
+        let result = run(cmd, None, false, OutputFormat::Json).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_register_sandbox_flag() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
+        let _dir = setup_config(TEST_CONFIG);
         let result = register(
             None,
             true,
             "key",
             "https://example.com",
             OutputFormat::Human,
-            Some(&path),
         )
         .await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_get_with_profile() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
-        let result = get(Some("test"), false, "key", OutputFormat::Json, Some(&path)).await;
+        let _dir = setup_config(TEST_CONFIG);
+        let result = get(Some("test"), false, "key", OutputFormat::Json).await;
+        cleanup();
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_webhook_remove_with_profile() {
-        let (_dir, path) = setup_config(TEST_CONFIG);
-        let result = remove(Some("test"), false, "key", OutputFormat::Table, Some(&path)).await;
+        let _dir = setup_config(TEST_CONFIG);
+        let result = remove(Some("test"), false, "key", OutputFormat::Table).await;
+        cleanup();
         assert!(result.is_err());
     }
 }

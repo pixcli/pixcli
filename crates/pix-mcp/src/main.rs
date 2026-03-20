@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Starting pix-mcp server v{}", env!("CARGO_PKG_VERSION"));
 
-    let config = config::load_mcp_config(None).map_err(|e| {
+    let config = PixConfig::load().map_err(|e| {
         tracing::error!("Failed to load config: {e}");
         e
     })?;

@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Core types, validation, and utilities for Brazilian Pix payments.
 //!
 //! This crate provides:

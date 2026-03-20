@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 //! Efí (formerly Gerencianet) Pix provider implementation.
 //!
 //! Provides OAuth2 + mTLS authentication and implements the `PixProvider` trait
