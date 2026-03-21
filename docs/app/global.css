@@ -2,10 +2,128 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
+/* ── Brand Colors ── */
 :root {
   --fd-primary: 142.1 76.2% 36.3%;
+  --pix-green: #22c55e;
+  --pix-green-light: #4ade80;
+  --pix-emerald: #10b981;
 }
 
 .dark {
   --fd-primary: 142.1 70.6% 45.3%;
+  --pix-green: #4ade80;
+  --pix-green-light: #86efac;
+  --pix-emerald: #34d399;
+}
+
+/* ── Typography ── */
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.025em;
+}
+
+/* ── Smooth transitions globally ── */
+*, *::before, *::after {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Disable transitions for elements that shouldn't animate */
+pre, pre *, code, code *, input, textarea, .no-transition {
+  transition: none !important;
+}
+
+/* ── Hero gradient text ── */
+.hero-gradient {
+  background: linear-gradient(135deg, var(--pix-green) 0%, var(--pix-emerald) 50%, var(--pix-green-light) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Subtle glow effect for primary elements ── */
+.glow-green {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.15),
+              0 0 60px rgba(34, 197, 94, 0.05);
+}
+
+.dark .glow-green {
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.15),
+              0 0 60px rgba(74, 222, 128, 0.05);
+}
+
+/* ── Feature card hover lift ── */
+.card-lift {
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 200ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+}
+
+.dark .card-lift:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Fade-in animation ── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}
+
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+
+/* ── Code block refinements ── */
+.quick-start-code {
+  position: relative;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+}
+
+.quick-start-code .comment {
+  opacity: 0.5;
+}
+
+/* ── Dot pattern background ── */
+.dot-pattern {
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.03;
+}
+
+.dark .dot-pattern {
+  opacity: 0.05;
+}
+
+/* ── Badge/pill styling ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 9999px;
 }
