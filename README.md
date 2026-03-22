@@ -10,9 +10,11 @@
 
 <p align="center"><strong>Make Pix payments from your terminal. Built for developers and AI agents.</strong></p>
 
-[![CI](https://github.com/pixcli/pixcli/actions/workflows/ci.yml/badge.svg)](https://github.com/pixcli/pixcli/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://docs-ecru-eta-65.vercel.app)
+<p align="center">
+  <a href="https://github.com/pixcli/pixcli/actions/workflows/ci.yml"><img src="https://github.com/pixcli/pixcli/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://docs-ecru-eta-65.vercel.app"><img src="https://img.shields.io/badge/docs-online-brightgreen" alt="Docs" /></a>
+</p>
 
 ---
 
