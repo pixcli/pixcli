@@ -1,6 +1,12 @@
 import { source } from '@/lib/source';
 import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/components/mdx';
+import {
+  DocsPage,
+  DocsBody,
+  DocsTitle,
+  DocsDescription,
+} from 'fumadocs-ui/page';
 import type { Metadata } from 'next';
 
 export default async function Page(props: {
@@ -13,21 +19,13 @@ export default async function Page(props: {
   const MDX = page.data.body;
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="space-y-2 border-b border-fd-border pb-6">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          {page.data.title}
-        </h1>
-        {page.data.description && (
-          <p className="text-lg leading-relaxed text-fd-muted-foreground">
-            {page.data.description}
-          </p>
-        )}
-      </header>
-      <article className="prose dark:prose-invert max-w-none">
+    <DocsPage toc={page.data.toc}>
+      <DocsTitle>{page.data.title}</DocsTitle>
+      <DocsDescription>{page.data.description}</DocsDescription>
+      <DocsBody>
         <MDX components={getMDXComponents()} />
-      </article>
-    </div>
+      </DocsBody>
+    </DocsPage>
   );
 }
 

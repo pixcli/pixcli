@@ -1,6 +1,10 @@
-# 🏦 pixcli
+<p align="center">
+  <img src="assets/logo-pix.svg" alt="Pixcli Logo" width="120" />
+</p>
 
-**Make Pix payments from your terminal. Built for developers and AI agents.**
+<h1 align="center">pixcli</h1>
+
+<p align="center"><strong>Make Pix payments from your terminal. Built for developers and AI agents.</strong></p>
 
 [![CI](https://github.com/pixcli/pixcli/actions/workflows/ci.yml/badge.svg)](https://github.com/pixcli/pixcli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

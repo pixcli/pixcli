@@ -1,17 +1,11 @@
 {
   "title": "Documentation",
   "pages": [
-    "---Getting Started---",
-    "getting-started/...",
-    "---CLI Commands---",
-    "cli/...",
-    "---API Reference---",
-    "api/...",
-    "---MCP Server---",
-    "mcp/...",
-    "---Webhooks---",
-    "webhooks/...",
-    "---Guides---",
-    "guides/..."
+    "getting-started",
+    "cli",
+    "api",
+    "mcp",
+    "webhooks",
+    "guides"
   ]
 }

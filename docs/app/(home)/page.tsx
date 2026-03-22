@@ -6,6 +6,7 @@ import {
   Bell,
   Cog,
 } from 'lucide-react';
+import { PixLogo } from '@/components/pix-logo';
 import type { ReactNode } from 'react';
 
 const features: { icon: ReactNode; title: string; description: string; href: string }[] = [
@@ -49,6 +50,10 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="relative z-10 w-full max-w-4xl px-6 pt-24 pb-20 text-center sm:pt-32 sm:pb-28">
+        <div className="animate-fade-in-up mb-8 flex justify-center">
+          <PixLogo className="size-20 text-fd-foreground sm:size-24" />
+        </div>
+
         <div className="animate-fade-in-up mb-6">
           <span className="badge border border-fd-border text-fd-muted-foreground">
             Open Source &middot; MIT Licensed
@@ -57,7 +62,7 @@ export default function HomePage() {
 
         <h1 className="animate-fade-in-up animation-delay-100 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
           Pix payments from{' '}
-          <span className="hero-gradient">the command line</span>
+          <span className="text-fd-foreground">the command line</span>
         </h1>
 
         <p className="animate-fade-in-up animation-delay-200 mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground sm:text-xl">
@@ -69,7 +74,7 @@ export default function HomePage() {
         <div className="animate-fade-in-up animation-delay-300 mt-10 flex flex-wrap justify-center gap-4">
           <Link
             href="/docs/getting-started/installation"
-            className="glow-green inline-flex items-center gap-2 rounded-lg bg-fd-primary px-7 py-3 font-semibold text-fd-primary-foreground hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-lg bg-fd-foreground px-7 py-3 font-semibold text-fd-background hover:opacity-90"
           >
             Get Started
             <span aria-hidden="true">&rarr;</span>
@@ -88,7 +93,7 @@ export default function HomePage() {
 
       {/* Quick Start */}
       <section className="relative z-10 w-full max-w-2xl px-6 pb-20">
-        <div className="glow-green rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
+        <div className="rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8">
           <div className="mb-4 flex items-center gap-2">
             <div className="flex gap-1.5">
               <div className="size-3 rounded-full bg-fd-muted-foreground/20" />
@@ -129,14 +134,16 @@ $ pixcli balance`}</code>
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          {features.map((feature, i) => (
             <Link
               key={feature.title}
               href={feature.href}
-              className="card-lift group rounded-xl border border-fd-border bg-fd-card p-6 no-underline hover:border-fd-primary/50"
+              className={`card-lift group rounded-xl border border-fd-border bg-fd-card p-6 no-underline hover:border-fd-foreground/30 ${
+                i < 2 ? 'lg:col-span-3' : 'lg:col-span-2'
+              }`}
             >
-              <div className="mb-4 inline-flex rounded-lg border border-fd-border bg-fd-secondary p-2.5 text-fd-primary">
+              <div className="mb-4 inline-flex rounded-lg border border-fd-border bg-fd-secondary p-2.5 text-fd-foreground">
                 {feature.icon}
               </div>
               <h3 className="text-base font-semibold">{feature.title}</h3>
@@ -147,6 +154,11 @@ $ pixcli balance`}</code>
           ))}
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="relative z-10 w-full border-t border-fd-border py-8 text-center text-sm text-fd-muted-foreground">
+        Created by Felipe Orlando, from Brazil 🇧🇷
+      </footer>
     </main>
   );
 }

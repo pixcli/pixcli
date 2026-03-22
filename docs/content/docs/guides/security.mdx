@@ -3,7 +3,7 @@ title: Security Best Practices
 description: How pixcli protects credentials and how to harden your deployment
 ---
 
-Pixcli is designed with security in mind. This guide covers the built-in protections and best practices for production deployments.
+PixCLI is designed with security in mind. This guide covers the built-in protections and best practices for production deployments.
 
 ## Credential Storage
 
@@ -91,7 +91,7 @@ This ensures that no `unsafe` blocks can be introduced without an explicit lint 
 
 ## Input Validation
 
-Pixcli validates all inputs before processing:
+PixCLI validates all inputs before processing:
 
 - **Pix keys**: CPF check digits, CNPJ check digits, E.164 phone format, email format, UUID v4
 - **BRCode fields**: Merchant name (max 25 chars), city (max 15 chars), txid (max 25 chars), amount (max 13 chars)

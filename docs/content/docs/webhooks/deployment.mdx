@@ -1,11 +1,11 @@
 ---
 title: Webhook Deployment
-description: Deploy the Pixcli webhook server to production
+description: Deploy the PixCLI webhook server to production
 ---
 
 ## Standalone Webhook Server
 
-Pixcli includes a dedicated webhook server binary (`pix-webhook-server`) for production use. It handles mTLS, event forwarding, and logging.
+PixCLI includes a dedicated webhook server binary (`pix-webhook-server`) for production use. It handles mTLS, event forwarding, and logging.
 
 ## Docker
 
@@ -41,7 +41,7 @@ Create a systemd service file:
 ```ini
 # /etc/systemd/system/pixcli-webhook.service
 [Unit]
-Description=Pixcli Webhook Server
+Description=PixCLI Webhook Server
 After=network.target
 
 [Service]

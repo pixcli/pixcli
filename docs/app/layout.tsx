@@ -5,8 +5,8 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Pixcli',
-    template: '%s | Pixcli',
+    default: 'PixCLI',
+    template: '%s | PixCLI',
   },
   description: 'CLI tool and Rust library for programmatic Pix payments in Brazil',
 };

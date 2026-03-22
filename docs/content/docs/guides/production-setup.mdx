@@ -1,6 +1,6 @@
 ---
 title: Production Setup
-description: Deploy Pixcli to production safely and securely
+description: Deploy PixCLI to production safely and securely
 ---
 
 ## Obtaining Production Credentials
@@ -168,7 +168,7 @@ grep -i "secret\|password" config.backup.toml  # Should be empty
 
 ### State Tracking
 
-Pixcli is stateless — no database required. However, track:
+PixCLI is stateless — no database required. However, track:
 
 - Recent charges (query API periodically)
 - Webhook events (save to JSONL)
