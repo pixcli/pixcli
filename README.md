@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/logo-pix.svg" alt="Pixcli Logo" width="120" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-pix-light.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-pix-dark.svg" />
+    <img src="assets/logo-pix-dark.svg" alt="pixcli logo" width="120" />
+  </picture>
 </p>
 
 <h1 align="center">pixcli</h1>
