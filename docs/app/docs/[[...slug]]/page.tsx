@@ -13,14 +13,18 @@ export default async function Page(props: {
   const MDX = page.data.body;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-3xl font-bold">{page.data.title}</h1>
+    <div className="flex flex-col gap-6">
+      <header className="space-y-2 border-b border-fd-border pb-6">
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          {page.data.title}
+        </h1>
         {page.data.description && (
-          <p className="text-lg text-muted-foreground">{page.data.description}</p>
+          <p className="text-lg leading-relaxed text-fd-muted-foreground">
+            {page.data.description}
+          </p>
         )}
-      </div>
-      <article className="prose dark:prose-invert">
+      </header>
+      <article className="prose dark:prose-invert max-w-none">
         <MDX components={getMDXComponents()} />
       </article>
     </div>
