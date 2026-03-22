@@ -7,7 +7,7 @@ export function baseOptions(): BaseLayoutProps {
       title: (
         <span className="flex items-center gap-2 font-bold tracking-tight">
           <PixLogo className="size-5" />
-          <span>PixCLI</span>
+          <span>pixcli</span>
         </span>
       ),
     },
