@@ -23,7 +23,7 @@ mod config;
 mod server;
 mod tools;
 
-use config::PixConfig;
+use config::{PixConfig, Profile};
 use pix_efi::config::{EfiConfig, EfiEnvironment};
 use pix_efi::EfiClient;
 
@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Starting pix-mcp server v{}", env!("CARGO_PKG_VERSION"));
 
-    let config = PixConfig::load().map_err(|e| {
+    let config = config::load().map_err(|e| {
         tracing::error!("Failed to load config: {e}");
         e
     })?;
@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Builds an `EfiConfig` from a config profile.
-fn build_efi_config(profile: &config::Profile) -> anyhow::Result<(EfiConfig, Option<String>)> {
+fn build_efi_config(profile: &Profile) -> anyhow::Result<(EfiConfig, Option<String>)> {
     match profile.backend.as_str() {
         "efi" => {
             let environment = if profile.environment == "production" {

@@ -96,7 +96,7 @@ repository.workspace = true
 homepage.workspace = true
 categories.workspace = true
 keywords.workspace = true
-description = "Pixli - Brazilian Pix payment CLI"
+description = "pixcli - Brazilian Pix payment CLI"
 readme = "README.md"
 
 [[bin]]
@@ -109,7 +109,6 @@ pix-brcode.workspace = true
 pix-provider.workspace = true
 pix-efi.workspace = true
 pix-config.workspace = true
-pix-webhook-server.workspace = true
 tokio.workspace = true
 clap.workspace = true
 serde.workspace = true

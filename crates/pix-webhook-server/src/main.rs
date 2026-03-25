@@ -41,6 +41,10 @@ struct Args {
     /// Suppress stdout output of events.
     #[arg(long)]
     quiet: bool,
+    /// Require this Bearer token in the Authorization header for all webhook requests.
+    /// If not set, no authentication is required.
+    #[arg(long, env = "PIX_WEBHOOK_AUTH_TOKEN")]
+    auth_token: Option<String>,
 }
 
 /// Shared application state accessible from request handlers.
@@ -53,6 +57,8 @@ pub struct AppState {
     pub quiet: bool,
     /// HTTP client for forwarding events.
     pub http_client: reqwest::Client,
+    /// Optional Bearer token for authenticating webhook requests.
+    pub auth_token: Option<String>,
 }
 
 /// Validates a forward URL, ensuring it uses http(s) scheme.
@@ -82,11 +88,19 @@ async fn main() -> anyhow::Result<()> {
         .pool_max_idle_per_host(5)
         .build()?;
 
+    if args.auth_token.is_none() {
+        tracing::warn!(
+            "No --auth-token set. Webhook endpoint is unauthenticated. \
+             Set --auth-token or PIX_WEBHOOK_AUTH_TOKEN for production use."
+        );
+    }
+
     let state = Arc::new(AppState {
         forward_url: args.forward_url.clone(),
         output_file: args.output_file.clone(),
         quiet: args.quiet,
         http_client,
+        auth_token: args.auth_token,
     });
 
     let cors = CorsLayer::new()

@@ -1,7 +1,7 @@
 //! HTTP request handlers for the Pix webhook server.
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -37,14 +37,46 @@ pub struct PixEvent {
     pub devolucoes: Option<Vec<serde_json::Value>>,
 }
 
+/// Validates the Bearer token from the Authorization header against the configured auth token.
+///
+/// Returns `Ok(())` if no auth token is configured or if the token matches.
+/// Returns `Err(StatusCode::UNAUTHORIZED)` if the token is missing or invalid.
+fn check_auth(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode> {
+    let expected = match state.auth_token {
+        Some(ref token) => token,
+        None => return Ok(()),
+    };
+
+    let header_value = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let provided = header_value.strip_prefix("Bearer ").unwrap_or("");
+
+    if provided.is_empty() || provided != expected {
+        warn!("Webhook request rejected: invalid or missing auth token");
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    Ok(())
+}
+
 /// Handles incoming webhook POST requests at `/pix`.
 ///
-/// Parses the Efí webhook payload, prints events to stdout (unless `--quiet`),
-/// optionally appends them to a JSONL file, and optionally forwards them via HTTP POST.
+/// If an auth token is configured, validates the `Authorization: Bearer <token>` header
+/// before processing. Parses the Efí webhook payload, prints events to stdout
+/// (unless `--quiet`), optionally appends them to a JSONL file, and optionally
+/// forwards them via HTTP POST.
 pub async fn handle_webhook(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<WebhookPayload>,
 ) -> StatusCode {
+    if let Err(status) = check_auth(&headers, &state) {
+        return status;
+    }
+
     info!("Received webhook with {} event(s)", payload.pix.len());
 
     for event in &payload.pix {
@@ -128,6 +160,7 @@ mod tests {
             output_file: None,
             quiet: true,
             http_client: reqwest::Client::new(),
+            auth_token: None,
         })
     }
 
@@ -228,6 +261,7 @@ mod tests {
             output_file: Some(output_path.to_str().unwrap().to_string()),
             quiet: true,
             http_client: reqwest::Client::new(),
+            auth_token: None,
         });
 
         let app = test_app(state);
@@ -332,6 +366,7 @@ mod additional_webhook_tests {
             output_file: None,
             quiet: true,
             http_client: reqwest::Client::new(),
+            auth_token: None,
         })
     }
 
@@ -560,6 +595,7 @@ mod additional_webhook_tests {
             output_file: Some(output_path.to_str().unwrap().to_string()),
             quiet: true,
             http_client: reqwest::Client::new(),
+            auth_token: None,
         });
         let app = test_app(state);
 
@@ -604,6 +640,7 @@ mod additional_webhook_tests {
             output_file: Some(output_path.to_str().unwrap().to_string()),
             quiet: true,
             http_client: reqwest::Client::new(),
+            auth_token: None,
         });
         let app = test_app(state);
 
@@ -775,5 +812,152 @@ mod additional_webhook_tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // --- Auth token tests ---
+
+    fn auth_state(token: &str) -> Arc<AppState> {
+        Arc::new(AppState {
+            forward_url: None,
+            output_file: None,
+            quiet: true,
+            http_client: reqwest::Client::new(),
+            auth_token: Some(token.to_string()),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_auth_valid_token_accepted() {
+        let app = test_app(auth_state("secret123"));
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer secret123")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_auth_missing_token_rejected() {
+        let app = test_app(auth_state("secret123"));
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_auth_wrong_token_rejected() {
+        let app = test_app(auth_state("secret123"));
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer wrong_token")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_auth_no_bearer_prefix_rejected() {
+        let app = test_app(auth_state("secret123"));
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "secret123")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_no_auth_configured_allows_all() {
+        let app = test_app(test_state()); // auth_token is None
+        let payload =
+            r#"{"pix":[{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z"}]}"#;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // --- Body size limit test ---
+
+    #[tokio::test]
+    async fn test_oversized_body_rejected() {
+        use axum::extract::DefaultBodyLimit;
+
+        let state = test_state();
+        let app = Router::new()
+            .route("/pix", post(handle_webhook))
+            .layer(DefaultBodyLimit::max(1024)) // 1 KB limit for test
+            .with_state(state);
+
+        // Build a payload larger than 1 KB
+        let large_payload = format!(
+            r#"{{"pix":[{{"endToEndId":"E1","valor":"1.00","horario":"2026-03-19T00:00:00Z","infoPagador":"{}"}}]}}"#,
+            "x".repeat(2048)
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/pix")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(large_payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }
