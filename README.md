@@ -266,6 +266,26 @@ You can override config values with environment variables:
 
 Want to add a new PSP? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Why Efí?
+
+You might wonder why pixcli ships with Efí (formerly Gerencianet) as its first provider instead of Mercado Pago, Nubank, or another big name. The answer is simple: Efí is the only PSP in Brazil that gives developers a fully open Pix API with zero friction.
+
+**Efí gets it right:**
+- Sign up, get API keys, and start making real Pix calls in under 30 minutes
+- Full BACEN-compliant Pix API (charges, payments, refunds, webhooks, DICT)
+- Working sandbox environment for testing without real money
+- mTLS certificate auth (which BACEN requires anyway)
+- Excellent documentation at [dev.sejaefi.com.br](https://dev.sejaefi.com.br)
+- Free account, no monthly fees, no approval process
+
+**Why not the others:**
+- **Nubank** — No public Pix API. No developer docs. No OAuth. Only works inside their app.
+- **Mercado Pago** — Has a Pix API, but it's designed for their checkout ecosystem. Direct Pix API access requires commercial approval and is limited compared to the full BACEN spec.
+- **PagSeguro** — Pix API exists but requires a lengthy approval process before you can make a single API call.
+- **Inter, C6, BTG** — Some offer Open Finance APIs, but none expose a straightforward Pix API for developers to create charges and process payments.
+
+pixcli is built on a **provider trait system** (`pix-provider` crate), so adding new PSPs is straightforward. Efí is the default because it lets you go from `cargo install` to real Pix transactions in minutes, not weeks.
+
 ## Security
 
 - **Credential storage**: Config file is created with `600` permissions (owner read/write only). Credentials are stored in plaintext — no encryption at rest
