@@ -55,12 +55,15 @@ fn check_auth(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode> {
     let provided = header_value.strip_prefix("Bearer ").unwrap_or("");
 
     // Use constant-time comparison to prevent timing attacks on the auth token.
-    let equal = provided.len() == expected.len()
-        && provided
-            .bytes()
-            .zip(expected.bytes())
-            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-            == 0;
+    // Bitwise `&` (not `&&`) avoids short-circuit evaluation so both length and
+    // content are always compared without leaking information via timing.
+    let len_eq = provided.len() == expected.len();
+    let bytes_eq = provided
+        .bytes()
+        .zip(expected.bytes())
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0;
+    let equal = len_eq & bytes_eq;
 
     if provided.is_empty() || !equal {
         warn!("Webhook request rejected: invalid or missing auth token");
@@ -222,7 +225,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_malformed_json_returns_422() {
+    async fn test_malformed_json_returns_400() {
         let app = test_app(test_state());
 
         let response = app

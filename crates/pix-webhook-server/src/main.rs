@@ -11,7 +11,6 @@ use axum::Router;
 use clap::Parser;
 use std::sync::Arc;
 use std::time::Duration;
-use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
 mod handlers;
@@ -103,15 +102,10 @@ async fn main() -> anyhow::Result<()> {
         auth_token: args.auth_token,
     });
 
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::any())
-        .allow_methods([axum::http::Method::POST, axum::http::Method::GET]);
-
     let app = Router::new()
         .route("/pix", post(handlers::handle_webhook))
         .route("/health", get(|| async { "OK" }))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
-        .layer(cors)
         .with_state(state);
 
     let addr = format!("{}:{}", args.bind, args.port);
