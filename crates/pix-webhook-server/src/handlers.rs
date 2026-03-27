@@ -54,7 +54,15 @@ fn check_auth(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode> {
 
     let provided = header_value.strip_prefix("Bearer ").unwrap_or("");
 
-    if provided.is_empty() || provided != expected {
+    // Use constant-time comparison to prevent timing attacks on the auth token.
+    let equal = provided.len() == expected.len()
+        && provided
+            .bytes()
+            .zip(expected.bytes())
+            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+            == 0;
+
+    if provided.is_empty() || !equal {
         warn!("Webhook request rejected: invalid or missing auth token");
         return Err(StatusCode::UNAUTHORIZED);
     }

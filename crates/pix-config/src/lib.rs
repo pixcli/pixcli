@@ -102,15 +102,26 @@ impl PixConfig {
 
         let content = toml::to_string_pretty(self).context("failed to serialize config")?;
 
-        std::fs::write(&config_path, &content)
-            .with_context(|| format!("failed to write config: {}", config_path.display()))?;
-
-        // Set restrictive permissions on Unix.
+        // Create the file with restrictive permissions from the start to avoid a
+        // race window where secrets are world-readable.
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&config_path, perms)?;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&config_path)
+                .and_then(|mut f| f.write_all(content.as_bytes()))
+                .with_context(|| format!("failed to write config: {}", config_path.display()))?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&config_path, &content)
+                .with_context(|| format!("failed to write config: {}", config_path.display()))?;
         }
 
         Ok(())
