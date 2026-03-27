@@ -226,7 +226,12 @@ impl PixConfig {
         // Remove the profile if it's entirely empty (no env vars set).
         let p = self.profiles.get(&self.defaults.profile);
         if let Some(p) = p {
-            if p.client_id.is_empty() && p.client_secret.is_empty() && p.certificate.is_empty() {
+            if p.client_id.is_empty()
+                && p.client_secret.is_empty()
+                && p.certificate.is_empty()
+                && p.certificate_password.is_empty()
+                && p.default_pix_key.is_none()
+            {
                 self.profiles.remove(&self.defaults.profile);
             }
         }
