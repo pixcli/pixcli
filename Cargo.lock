@@ -1422,8 +1422,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "directories",
  "pix-brcode",
+ "pix-config",
  "pix-core",
  "pix-efi",
  "pix-provider",
@@ -1433,7 +1433,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "toml",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1487,7 +1486,6 @@ dependencies = [
  "pix-core",
  "pix-efi",
  "pix-provider",
- "pix-webhook-server",
  "qrcode",
  "reqwest",
  "serde",

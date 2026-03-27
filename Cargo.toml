@@ -72,7 +72,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Web server (webhook)
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors", "limit"] }
+tower-http = { version = "0.6", features = ["trace", "limit"] }
 
 # MCP
 rmcp = { version = "1.2", features = ["server", "macros", "transport-io"] }
@@ -96,7 +96,7 @@ repository.workspace = true
 homepage.workspace = true
 categories.workspace = true
 keywords.workspace = true
-description = "Pixli - Brazilian Pix payment CLI"
+description = "pixcli - Brazilian Pix payment CLI"
 readme = "README.md"
 
 [[bin]]
@@ -109,7 +109,6 @@ pix-brcode.workspace = true
 pix-provider.workspace = true
 pix-efi.workspace = true
 pix-config.workspace = true
-pix-webhook-server.workspace = true
 tokio.workspace = true
 clap.workspace = true
 serde.workspace = true
