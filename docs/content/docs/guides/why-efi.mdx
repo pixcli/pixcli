@@ -1,0 +1,49 @@
+---
+title: Why Efí?
+description: Why pixcli ships with Efí (Gerencianet) as its first payment provider
+---
+
+You might wonder why pixcli ships with Efí (formerly Gerencianet) as its first provider instead of Mercado Pago, Nubank, or another big name. The answer is simple: Efí is the only PSP in Brazil that gives developers a fully open Pix API with zero friction.
+
+## What Efí gets right
+
+- **Sign up and go.** Create an account, get API keys, and start making real Pix calls in under 30 minutes. No sales calls, no approval process, no waiting.
+- **Full BACEN spec.** Charges, payments, refunds, webhooks, DICT key management. The complete Pix API as defined by the Central Bank.
+- **Working sandbox.** Test everything with fake money before going live. Most PSPs either don't have a sandbox or it's broken.
+- **mTLS by default.** Certificate-based authentication, which BACEN requires for Pix anyway. Efí makes it straightforward to generate and configure.
+- **Great documentation.** [dev.sejaefi.com.br](https://dev.sejaefi.com.br) has clear, complete API docs with examples.
+- **Free to start.** No monthly fees. No minimum volume. Free to receive Pix.
+
+## Why not the others
+
+### Nubank
+
+No public Pix API. No developer documentation. No OAuth endpoints. Only works inside the Nubank app. If you want to create a Pix charge programmatically, Nubank simply doesn't offer that.
+
+### Mercado Pago
+
+Has a Pix API, but it's designed around the Mercado Pago checkout ecosystem. Direct Pix API access requires commercial approval and is limited compared to the full BACEN specification. Better suited for e-commerce integrations than developer tooling.
+
+### PagSeguro
+
+Offers a Pix API, but requires a lengthy approval process before you can make your first API call. Not practical for developers who want to experiment and build quickly.
+
+### Inter, C6, BTG
+
+Some offer Open Finance APIs, but none expose a straightforward Pix API for developers to create charges and process payments independently.
+
+## Adding more providers
+
+pixcli is built on a provider trait system (`pix-provider` crate). The `PixProvider` trait defines a standard interface for all Pix operations. Efí is the default because it lets you go from `cargo install` to real transactions in minutes.
+
+Adding a new provider means implementing the same trait for a different PSP. See the [Contributing guide](/docs/guides/contributing) if you want to add Mercado Pago, PagSeguro, or another provider.
+
+```rust
+// The provider trait that all PSPs implement
+pub trait PixProvider {
+    async fn create_charge(&self, charge: &ChargeRequest) -> Result<Charge>;
+    async fn get_charge(&self, txid: &str) -> Result<Charge>;
+    async fn send_pix(&self, pix: &PixSendRequest) -> Result<PixSendResponse>;
+    // ... more operations
+}
+```
