@@ -32,8 +32,8 @@ pub enum QrCommand {
         #[arg(long)]
         txid: Option<String>,
         /// Save QR as PNG to this file path
-        #[arg(long, short = 'f')]
-        output: Option<String>,
+        #[arg(long = "output-file", short = 'f', id = "output_file")]
+        output_file: Option<String>,
         /// QR module size in pixels (for PNG, default: 10)
         #[arg(long, default_value = "10")]
         size: u32,
@@ -55,7 +55,7 @@ pub fn run(cmd: QrCommand, format: OutputFormat) -> Result<()> {
             city,
             description,
             txid,
-            output,
+            output_file,
             size,
         } => generate_qr(
             &key,
@@ -64,7 +64,7 @@ pub fn run(cmd: QrCommand, format: OutputFormat) -> Result<()> {
             &city,
             description.as_deref(),
             txid.as_deref(),
-            output.as_deref(),
+            output_file.as_deref(),
             size,
             format,
         ),

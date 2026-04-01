@@ -654,8 +654,8 @@ impl PixProvider for EfiClient {
 
         let path = format!(
             "/v2/cob?inicio={}&fim={}",
-            start.to_rfc3339(),
-            end.to_rfc3339()
+            start.format("%Y-%m-%dT%H:%M:%SZ"),
+            end.format("%Y-%m-%dT%H:%M:%SZ")
         );
 
         let (_status, response_body) = self.get_with_retry(&path).await?;
@@ -736,8 +736,8 @@ impl PixProvider for EfiClient {
 
         let path = format!(
             "/v2/pix?inicio={}&fim={}",
-            start.to_rfc3339(),
-            end.to_rfc3339()
+            start.format("%Y-%m-%dT%H:%M:%SZ"),
+            end.format("%Y-%m-%dT%H:%M:%SZ")
         );
 
         let (_status, response_body) = self.get_with_retry(&path).await?;
