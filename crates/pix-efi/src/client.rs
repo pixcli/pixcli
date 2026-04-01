@@ -3,7 +3,7 @@
 //! Supports immediate charges, due-date charges, Pix payments,
 //! balance queries, and transaction listing.
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use reqwest::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
 
@@ -654,8 +654,8 @@ impl PixProvider for EfiClient {
 
         let path = format!(
             "/v2/cob?inicio={}&fim={}",
-            start.to_rfc3339(),
-            end.to_rfc3339()
+            start.to_rfc3339_opts(SecondsFormat::Secs, true),
+            end.to_rfc3339_opts(SecondsFormat::Secs, true)
         );
 
         let (_status, response_body) = self.get_with_retry(&path).await?;
@@ -736,8 +736,8 @@ impl PixProvider for EfiClient {
 
         let path = format!(
             "/v2/pix?inicio={}&fim={}",
-            start.to_rfc3339(),
-            end.to_rfc3339()
+            start.to_rfc3339_opts(SecondsFormat::Secs, true),
+            end.to_rfc3339_opts(SecondsFormat::Secs, true)
         );
 
         let (_status, response_body) = self.get_with_retry(&path).await?;
