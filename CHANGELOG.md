@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** Renamed the CLI binary from `pixcli` to `pix`.
+- **BREAKING:** Received-transaction commands are now top-level `pix list` and
+  `pix get <e2eid>` (previously the `pix` subcommand `pixcli pix list` /
+  `pixcli pix get`).
+
 ## [0.1.0] - 2026-03-20
 
 ### Added

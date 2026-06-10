@@ -115,8 +115,8 @@ pixcli charge get --txid abc123def456
 ### List received Pix transactions
 
 ```bash
-pixcli pix list --days 7
-pixcli pix get --e2eid E12345678901234567890123456789012
+pix list --days 7
+pix get E12345678901234567890123456789012
 ```
 
 ### Generate a QR code (offline)

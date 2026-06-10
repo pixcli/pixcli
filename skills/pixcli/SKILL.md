@@ -76,8 +76,8 @@ pixcli charge get --txid <txid>
 ### Received Pix transactions
 
 ```bash
-pixcli pix list --days 7
-pixcli pix get --e2eid <end-to-end-id>
+pix list --days 7
+pix get <end-to-end-id>
 ```
 
 ### QR codes (offline, no API call)

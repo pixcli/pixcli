@@ -15,11 +15,7 @@ mod output;
 
 /// CLI tool for programmatic Pix payments.
 #[derive(Parser)]
-#[command(
-    name = "pixcli",
-    version,
-    about = "CLI tool for Brazilian Pix payments"
-)]
+#[command(name = "pix", version, about = "CLI tool for Brazilian Pix payments")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -54,10 +50,22 @@ enum Commands {
         #[command(subcommand)]
         action: commands::charge::ChargeCommand,
     },
-    /// List and get received Pix transactions.
-    Pix {
-        #[command(subcommand)]
-        action: commands::pix_cmd::PixCommand,
+    /// List received Pix transactions.
+    List {
+        /// Number of days to look back (default: 7).
+        #[arg(long, default_value = "7")]
+        days: u32,
+        /// Start date (ISO 8601, overrides --days).
+        #[arg(long)]
+        from: Option<String>,
+        /// End date (ISO 8601).
+        #[arg(long)]
+        to: Option<String>,
+    },
+    /// Get a received Pix transaction by its end-to-end ID.
+    Get {
+        /// End-to-end ID.
+        e2eid: String,
     },
     /// Configuration management.
     Config {
@@ -100,8 +108,20 @@ async fn main() -> anyhow::Result<()> {
         Commands::Charge { action } => {
             commands::charge::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
         }
-        Commands::Pix { action } => {
-            commands::pix_cmd::run(action, cli.profile.as_deref(), cli.sandbox, cli.output).await
+        Commands::List { days, from, to } => {
+            commands::transactions::list(
+                days,
+                from,
+                to,
+                cli.profile.as_deref(),
+                cli.sandbox,
+                cli.output,
+            )
+            .await
+        }
+        Commands::Get { e2eid } => {
+            commands::transactions::get(e2eid, cli.profile.as_deref(), cli.sandbox, cli.output)
+                .await
         }
         Commands::Config { action } => commands::config_cmd::run(action, cli.output),
         Commands::Qr { action } => commands::qr::run(action, cli.output),
