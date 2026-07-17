@@ -337,6 +337,7 @@ pub struct WebhookInfo {
 #[derive(Debug, Serialize)]
 struct EfiChargeRequest {
     calendario: EfiCalendario,
+    #[serde(skip_serializing_if = "Option::is_none")]
     devedor: Option<EfiDevedor>,
     valor: EfiValor,
     chave: String,
@@ -349,6 +350,7 @@ struct EfiChargeRequest {
 #[derive(Debug, Serialize)]
 struct EfiDueDateChargeRequest {
     calendario: EfiCalendarioCobv,
+    #[serde(skip_serializing_if = "Option::is_none")]
     devedor: Option<EfiDevedor>,
     valor: EfiValor,
     chave: String,
@@ -958,6 +960,45 @@ mod tests {
         let result =
             EfiClient::check_response(reqwest::StatusCode::TOO_MANY_REQUESTS, "slow down", None);
         assert!(matches!(result, Err(ProviderError::RateLimited { .. })));
+    }
+
+    #[test]
+    fn test_charge_request_omits_devedor_when_none() {
+        let body = EfiChargeRequest {
+            calendario: EfiCalendario { expiracao: 3600 },
+            devedor: None,
+            valor: EfiValor {
+                original: "10.00".to_string(),
+            },
+            chave: "key@test.com".to_string(),
+            solicitacao_pagador: None,
+        };
+        let value = serde_json::to_value(&body).unwrap();
+        assert!(
+            value.get("devedor").is_none(),
+            "devedor must be omitted when no debtor is provided, got: {value}"
+        );
+    }
+
+    #[test]
+    fn test_due_date_charge_request_omits_devedor_when_none() {
+        let body = EfiDueDateChargeRequest {
+            calendario: EfiCalendarioCobv {
+                data_de_vencimento: "2026-12-31".to_string(),
+                validade_apos_vencimento: 30,
+            },
+            devedor: None,
+            valor: EfiValor {
+                original: "10.00".to_string(),
+            },
+            chave: "key@test.com".to_string(),
+            solicitacao_pagador: None,
+        };
+        let value = serde_json::to_value(&body).unwrap();
+        assert!(
+            value.get("devedor").is_none(),
+            "devedor must be omitted when no debtor is provided, got: {value}"
+        );
     }
 }
 
