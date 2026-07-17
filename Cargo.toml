@@ -100,7 +100,7 @@ description = "pixcli - Brazilian Pix payment CLI"
 readme = "README.md"
 
 [[bin]]
-name = "pixcli"
+name = "pix"
 path = "src/main.rs"
 
 [dependencies]
