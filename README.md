@@ -33,8 +33,8 @@
 ## Quick Start
 
 ```bash
-# Install from crates.io
-cargo install pixcli
+# Install with cargo (from git)
+cargo install --git https://github.com/pixcli/pixcli pixcli
 
 # Run the setup wizard
 pixcli config init
@@ -45,11 +45,15 @@ pixcli balance
 
 ## Installation
 
-### From crates.io (recommended)
+### With cargo (recommended)
 
 ```bash
-cargo install pixcli
+cargo install --git https://github.com/pixcli/pixcli pixcli
 ```
+
+> **Note:** `cargo install pixcli` (from crates.io) is not yet available because
+> the crate has not been published. Use the git command above or the
+> [release binaries](#from-github-releases) instead.
 
 ### From Homebrew (macOS/Linux)
 
@@ -65,8 +69,8 @@ Download the latest binary for your platform from
 
 ```bash
 # Example for Linux x86_64
-curl -LO https://github.com/pixcli/pixcli/releases/latest/download/pixcli-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-tar xzf pixcli-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/pixcli/pixcli/releases/latest/download/pixcli-v0.0.2-x86_64-unknown-linux-gnu.tar.gz
+tar xzf pixcli-v0.0.2-x86_64-unknown-linux-gnu.tar.gz
 sudo mv pixcli /usr/local/bin/
 ```
 
