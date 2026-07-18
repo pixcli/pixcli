@@ -16,7 +16,7 @@ mod output;
 /// CLI tool for programmatic Pix payments.
 #[derive(Parser)]
 #[command(
-    name = "pixcli",
+    name = "pix",
     version,
     about = "CLI tool for Brazilian Pix payments"
 )]

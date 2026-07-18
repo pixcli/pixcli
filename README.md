@@ -33,23 +33,27 @@
 ## Quick Start
 
 ```bash
-# Install from crates.io
-cargo install pixcli
+# Install with cargo (from git)
+cargo install --git https://github.com/pixcli/pixcli pixcli
 
 # Run the setup wizard
-pixcli config init
+pix config init
 
 # Check your balance
-pixcli balance
+pix balance
 ```
 
 ## Installation
 
-### From crates.io (recommended)
+### With cargo (recommended)
 
 ```bash
-cargo install pixcli
+cargo install --git https://github.com/pixcli/pixcli pixcli
 ```
+
+> **Note:** `cargo install pixcli` (from crates.io) is not yet available because
+> the crate has not been published. Use the git command above or the
+> [release binaries](#from-github-releases) instead.
 
 ### From Homebrew (macOS/Linux)
 
@@ -65,8 +69,8 @@ Download the latest binary for your platform from
 
 ```bash
 # Example for Linux x86_64
-curl -LO https://github.com/pixcli/pixcli/releases/latest/download/pixcli-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-tar xzf pixcli-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/pixcli/pixcli/releases/latest/download/pixcli-v0.0.2-x86_64-unknown-linux-gnu.tar.gz
+tar xzf pixcli-v0.0.2-x86_64-unknown-linux-gnu.tar.gz
 sudo mv pixcli /usr/local/bin/
 ```
 
@@ -84,94 +88,94 @@ cargo build --release
 ### Check balance
 
 ```bash
-pixcli balance
+pix balance
 # 💰 Balance: R$ 1.234,56
 ```
 
 ### Create a charge
 
 ```bash
-pixcli charge create --amount 25.50 --description "Coffee ☕"
+pix charge create --amount 25.50 --description "Coffee ☕"
 # ✅ Charge created: txid=abc123
 # 📋 Copy & paste: 00020126...
 
 # Use --output json for scripting
-pixcli charge create --amount 25.50 --description "Invoice #42" --output json
+pix charge create --amount 25.50 --description "Invoice #42" --output json
 ```
 
 ### List charges
 
 ```bash
-pixcli charge list
-pixcli charge list --output json
+pix charge list
+pix charge list --output json
 ```
 
 ### Get charge details
 
 ```bash
-pixcli charge get --txid abc123def456
+pix charge get --txid abc123def456
 ```
 
 ### List received Pix transactions
 
 ```bash
-pixcli pix list --days 7
-pixcli pix get --e2eid E12345678901234567890123456789012
+pix pix list --days 7
+pix pix get --e2eid E12345678901234567890123456789012
 ```
 
 ### Generate a QR code (offline)
 
 ```bash
 # Terminal QR code
-pixcli qr generate --key "+5511999999999" --amount 10.00 --name "FULANO DE TAL" --city "SAO PAULO"
+pix qr generate --key "+5511999999999" --amount 10.00 --name "FULANO DE TAL" --city "SAO PAULO"
 
 # Save as PNG
-pixcli qr generate --key "email@example.com" --amount 50.00 --name "LOJA" --city "RIO" --png qr.png
+pix qr generate --key "email@example.com" --amount 50.00 --name "LOJA" --city "RIO" --png qr.png
 ```
 
 ### Decode a QR code payload
 
 ```bash
-pixcli qr decode --payload "00020126580014br.gov.bcb.pix..."
+pix qr decode --payload "00020126580014br.gov.bcb.pix..."
 ```
 
 ### Webhook management
 
 ```bash
 # Register a webhook URL
-pixcli webhook register --key "+5511999999999" --url "https://example.com/pix"
+pix webhook register --key "+5511999999999" --url "https://example.com/pix"
 
 # Check registered webhook
-pixcli webhook get --key "+5511999999999"
+pix webhook get --key "+5511999999999"
 
 # Start a local webhook listener
-pixcli webhook listen --port 8080
+pix webhook listen --port 8080
 ```
 
 ### Configuration
 
 ```bash
 # Interactive setup
-pixcli config init
+pix config init
 
 # Show current config (secrets redacted)
-pixcli config show
+pix config show
 ```
 
 ### Global options
 
 ```bash
 # Use a specific profile
-pixcli --profile my-company balance
+pix --profile my-company balance
 
 # JSON output
-pixcli --output json charge list
+pix --output json charge list
 
 # Sandbox mode
-pixcli --sandbox balance
+pix --sandbox balance
 
 # Verbose logging
-pixcli --verbose charge create --amount 10.00 --description "test"
+pix --verbose charge create --amount 10.00 --description "test"
 ```
 
 ## For AI Agents (MCP)

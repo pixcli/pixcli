@@ -50,6 +50,33 @@ pub struct EfiAuth {
     base_url_override: Option<String>,
 }
 
+/// Builds an actionable error message for a failed PKCS#12 import.
+///
+/// When the certificate password is empty, the failure is very likely the
+/// well-known `native-tls` / Apple Secure Transport limitation on macOS, which
+/// cannot import a password-less PKCS#12 and surfaces only an opaque
+/// "builder error". In that case we return guidance plus a re-wrap workaround;
+/// otherwise we keep the original error format.
+fn pkcs12_error_message<E: std::fmt::Display>(config: &EfiConfig, e: &E) -> String {
+    if config.certificate_password.is_empty() {
+        let path = config.certificate_path.display();
+        format!(
+            "failed to parse PKCS#12 certificate: {e}\n\n\
+             The certificate at '{path}' has an EMPTY password. On macOS, reqwest uses \
+             native-tls (Apple Secure Transport), which cannot import a password-less \
+             PKCS#12 and reports only an opaque \"builder error\". Efí sandbox/homologação \
+             certificates are commonly issued this way.\n\n\
+             Workaround: re-wrap the certificate with an (empty) export password using OpenSSL:\n\
+             \x20 openssl pkcs12 -in cert.p12 -passin pass: -nodes -out /tmp/c.pem\n\
+             \x20 openssl pkcs12 -export -in /tmp/c.pem -out cert-pw.p12 -passout pass:\n\
+             \x20 rm /tmp/c.pem\n\n\
+             Then point the profile at 'cert-pw.p12'."
+        )
+    } else {
+        format!("failed to parse PKCS#12 certificate: {e}")
+    }
+}
+
 impl EfiAuth {
     /// Creates a new `EfiAuth` instance, loading the mTLS certificate.
     ///
@@ -66,9 +93,7 @@ impl EfiAuth {
         })?;
 
         let identity = Identity::from_pkcs12_der(&cert_bytes, &config.certificate_password)
-            .map_err(|e| {
-                EfiError::CertificateError(format!("failed to parse PKCS#12 certificate: {e}"))
-            })?;
+            .map_err(|e| EfiError::CertificateError(pkcs12_error_message(&config, &e)))?;
 
         let http_client = Client::builder()
             .identity(identity)
@@ -279,6 +304,28 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, EfiError::CertificateError(_)));
+    }
+
+    #[test]
+    fn test_pkcs12_error_message_empty_password_has_workaround() {
+        let config = test_config(); // certificate_password is empty
+        let msg = pkcs12_error_message(&config, &"builder error");
+        // Original detail is preserved...
+        assert!(msg.contains("failed to parse PKCS#12 certificate: builder error"));
+        // ...and the actionable guidance is included.
+        assert!(msg.contains("EMPTY password"));
+        assert!(msg.contains("native-tls"));
+        assert!(msg.contains("openssl pkcs12 -export"));
+        assert!(msg.contains("cert-pw.p12"));
+    }
+
+    #[test]
+    fn test_pkcs12_error_message_with_password_keeps_original() {
+        let mut config = test_config();
+        config.certificate_password = "s3cret".to_string();
+        let msg = pkcs12_error_message(&config, &"builder error");
+        assert_eq!(msg, "failed to parse PKCS#12 certificate: builder error");
+        assert!(!msg.contains("openssl"));
     }
 
     #[tokio::test]

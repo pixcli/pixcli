@@ -50,7 +50,12 @@ async fn main() -> anyhow::Result<()> {
     })?;
 
     let (efi_config, default_pix_key) = build_efi_config(profile)?;
-    let client = EfiClient::new(efi_config).map_err(|e| {
+    let client = if let Some(key) = default_pix_key.clone() {
+        EfiClient::with_pix_key(efi_config, key)
+    } else {
+        EfiClient::new(efi_config)
+    }
+    .map_err(|e| {
         tracing::error!("Failed to create Efí client: {e}");
         anyhow::anyhow!("Efí client init error: {e}")
     })?;
